@@ -54,35 +54,51 @@
 
 ### Giai Đoạn 2: Tiền Xử Lý Ảnh Chuyên Sâu & Tải Tài Liệu (Image Preprocessing & Ingestion)
 
-- [ ] **Task 2.1: Bộ nạp tài liệu & chuyển đổi trang (Document Loader)**
+- [x] **Task 2.1: Bộ nạp tài liệu & chuyển đổi trang (Document Loader)**
   - **Mục tiêu:** Cài đặt `src/core/document_loader.py` sử dụng PyMuPDF để nạp PDF (scanned/vector/text-based), hỗ trợ xuất ảnh trang theo DPI tùy chọn (150/300/600), nạp ảnh định dạng PNG, JPG, TIFF đa trang, BMP. Tích hợp **Input Validation** (kiểm tra PDF mã hóa, kích thước file bounds, page count limits) và ném `DocumentLoadError`. Tích hợp logic phát hiện sơ bộ loại trang PDF (có text layer hay chỉ có ảnh).
   - **Acceptance:** Nạp thành công file PDF nhiều trang và ảnh đơn lẻ; từ chối và báo lỗi rõ ràng khi file bị mã hóa hoặc ảnh hỏng; trả về danh sách đối tượng ảnh NumPy ndarray (RGB) và metadata trang, đánh dấu được trang nào có text layer.
   - **Verify:** `pytest -m unit tests/unit/test_document_loader.py -v`
   - **Files:** `src/core/document_loader.py`, `src/utils/image_utils.py`, `tests/unit/test_document_loader.py`
 
-- [ ] **Task 2.2: Tự động phát hiện hướng trang & xoay thẳng (Auto Orientation & Deskew)**
+- [x] **Task 2.2: Tự động phát hiện hướng trang & xoay thẳng (Auto Orientation & Deskew)**
   - **Mục tiêu:** Cài đặt thuật toán nhận diện hướng (0°, 90°, 180°, 270°) và tự động làm thẳng góc nghiêng (-45° đến +45°) bằng Hough Line Transform / MinAreaRect trong `src/core/preprocessor.py`. Validate tính hợp lệ của ảnh đầu vào và ném `PreprocessingError` nếu ảnh corrupt.
   - **Acceptance:** Ảnh nghiêng lệch tự động xoay về thẳng đứng với sai số góc $< 0.5^\circ$; ảnh nằm ngang/lộn ngược tự động xoay về 0°; xử lý an toàn ảnh kích thước bất thường.
   - **Verify:** `pytest -m unit tests/unit/test_deskew.py -v`
   - **Files:** `src/core/preprocessor.py`, `tests/unit/test_deskew.py`
 
-- [ ] **Task 2.3: Bộ lọc khử nhiễu, xóa bóng gáy sách & tăng tương phản (Denoise, Shadow Removal & CLAHE)**
+- [x] **Task 2.3: Bộ lọc khử nhiễu, xóa bóng gáy sách & tăng tương phản (Denoise, Shadow Removal & CLAHE)**
   - **Mục tiêu:** Cài đặt xử lý khử nhiễu (`fastNlMeansDenoising`), cân bằng ánh sáng nền bằng toán tử hình thái học (Morphological Closing) và tăng tương phản chữ bằng CLAHE. Ném `PreprocessingError` khi gặp sự cố tính toán kênh màu.
   - **Acceptance:** Ảnh chụp có bóng đổ ở góc/gáy sách được làm sáng đều; chữ mờ nhòe được tăng cường độ sắc nét cạnh viền; không gây méo dạng ký tự.
   - **Verify:** `pytest -m unit tests/unit/test_enhancement.py -v`
   - **Files:** `src/core/preprocessor.py`, `tests/unit/test_enhancement.py`
 
-- [ ] **Task 2.4: Nhận diện & cắt bỏ viền đen máy scan (Border Removal)**
+- [x] **Task 2.4: Nhận diện & cắt bỏ viền đen máy scan (Border Removal)**
   - **Mục tiêu:** Phát hiện các vệt đen, khung đen xung quanh mép giấy do máy quét và tự động cắt sát lề tài liệu.
   - **Acceptance:** Cắt bỏ viền đen không làm mất chữ sát biên trang.
   - **Verify:** `pytest -m unit tests/unit/test_border_removal.py -v`
   - **Files:** `src/core/preprocessor.py`, `tests/unit/test_border_removal.py`
 
-- [ ] **Task 2.5: Tự động phân loại PDF & trích xuất text-based (PDF Classifier)**
+- [x] **Task 2.5: Tự động phân loại PDF & trích xuất text-based (PDF Classifier)**
   - **Mục tiêu:** Cài đặt `src/core/pdf_classifier.py` tự động phân loại từng trang PDF thành 3 loại: `TEXT_BASED` (có text layer đầy đủ), `SCANNED` (chỉ có ảnh), `HYBRID` (hỗn hợp). Với trang text-based, trích xuất text, tọa độ bounding box, font trực tiếp từ PDF text layer bằng PyMuPDF (`page.get_text("dict")`) mà không cần rasterize và OCR.
   - **Acceptance:** Phân loại chính xác 100% trang scanned vs text-based trên bộ mẫu fixture; text trích xuất từ trang text-based khớp 100% bản gốc; tốc độ < 1 giây/trang.
   - **Verify:** `pytest -m unit tests/unit/test_pdf_classifier.py -v`
   - **Files:** `src/core/pdf_classifier.py`, `tests/unit/test_pdf_classifier.py`
+
+**Kết quả nghiệm thu giai đoạn 2 (14/09/2026):**
+- Hoàn thành toàn bộ 5/5 tasks của Giai đoạn 2 (`Task 2.1` -> `Task 2.5`).
+- `python -m pytest tests/ --cov=src --cov-report=term-missing`: **133 passed**, test coverage đạt **89.68%** (vượt yêu cầu $\ge 80\%$), trong đó:
+  - `src/utils/image_utils.py`: **100%**
+  - `src/core/document_loader.py`: **85%**
+  - `src/core/preprocessor.py`: **85%**
+  - `src/core/pdf_classifier.py`: **82%**
+- Quality gates nghiêm ngặt:
+  - `python -m black --check src/ tests/`: đạt (100% formatted).
+  - `python -X utf8 -m isort --check-only src/ tests/`: đạt (100% sorted).
+  - `python -m ruff check src/ tests/`: đạt (0 lỗi / 0 cảnh báo).
+  - `python -m mypy src/`: đạt (`Success: no issues found in 22 source files`).
+  - `python -m bandit -c pyproject.toml -r src/`: đạt (0 security issues identified).
+- Thuật toán Deskew xử lý độ nghiêng $\pm 45^\circ$, loại bỏ viền đen scanner, khử nhiễu Non-Local Means, xóa bóng gáy sách bằng Morphological Closing và tăng tương phản bằng CLAHE trên kênh Luminance.
+- PDF Classifier phân loại chính xác `TEXT_BASED`, `SCANNED`, `HYBRID` và trích xuất trực tiếp text layer mà không cần rasterize/OCR tốn tài nguyên.
 
 ---
 

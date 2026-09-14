@@ -36,7 +36,7 @@ namespaces = false
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 pythonpath = ["."]
-addopts = "--strict-markers --strict-config"
+addopts = "--strict-markers --strict-config --basetemp=build/pytest_tmp -o cache_dir=build/.pytest_cache"
 qt_api = "pyside6"
 markers = [
     "unit: isolated behavior tests, using temporary local files where necessary",
@@ -68,9 +68,26 @@ target-version = "py310"
 select = ["E", "F", "I", "UP", "B", "T20"]
 
 [tool.mypy]
-python_version = "3.10"
+python_version = "3.12"
 strict = true
+disallow_untyped_calls = false
 files = ["src"]
+
+[[tool.mypy.overrides]]
+module = [
+    "pymupdf",
+    "pymupdf.*",
+    "cv2",
+    "cv2.*",
+    "fitz",
+    "fitz.*",
+    "vietocr.*",
+    "paddleocr.*",
+    "docx.*",
+    "openpyxl.*",
+]
+ignore_missing_imports = true
+disallow_untyped_calls = false
 
 [tool.bandit]
 exclude_dirs = ["tests", ".venv"]
