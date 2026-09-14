@@ -18,29 +18,37 @@
 
 ### Giai Đoạn 1: Thiết Lập Nền Tảng, Quản Lý Weights Tùy Chỉnh & Cấu Trúc Dự Án (Foundation & Weights Manager)
 
-- [ ] **Task 1.1: Khởi tạo cấu trúc thư mục & quản lý dependencies**
+- [x] **Task 1.1: Khởi tạo cấu trúc thư mục & quản lý dependencies**
   - **Mục tiêu:** Tạo toàn bộ cây thư mục chuẩn modularity, thư mục `src/models/` mặc định trong cấu trúc mã nguồn, thư mục `packaging/`, file `requirements.txt` (ghim rõ phiên bản tối thiểu theo Tech Stack), `requirements-dev.txt` (pytest, pytest-cov, pytest-qt, ruff, black, isort, mypy, bandit, pyinstaller), cấu hình `pyproject.toml` (đăng ký test markers `unit`, `integration`, `gui`; threshold coverage 80%; cấu hình ruff, black, mypy, bandit).
   - **Acceptance:** Cài đặt môi trường ảo thành công, thư mục `src/models/` sẵn sàng, `pytest`, `ruff`, `mypy`, `bandit`, `pyinstaller` thực thi chuẩn xác không lỗi cú pháp cấu hình.
   - **Verify:** `python -m pip install -e . && python -m pip install -r requirements-dev.txt; pytest --version; ruff --version; mypy --version; bandit --version; pyinstaller --version`
   - **Files:** `requirements.txt`, `requirements-dev.txt`, `pyproject.toml`, `.gitignore`, `README.md`
 
-- [ ] **Task 1.2: Xây dựng hệ thống cấu hình, ngoại lệ phân cấp & ghi nhật ký (Config, Exceptions & Logger)**
+- [x] **Task 1.2: Xây dựng hệ thống cấu hình, ngoại lệ phân cấp & ghi nhật ký (Config, Exceptions & Logger)**
   - **Mục tiêu:** Cài đặt `src/config.py` (`QSettings` + JSON fallback), `src/utils/logger.py` (Loguru ghi xoay vòng, cấm `print()`) và hệ thống ngoại lệ phân cấp chuẩn `src/core/exceptions.py` (`PDFOCRError` làm base class cho `WeightsError`, `OCREngineError`, `ExportError`, `PreprocessingError`, `DocumentLoadError`).
   - **Acceptance:** Lưu và tải Preferences an toàn; ghi log chuẩn ra console và file `logs/app.log`; ngoại lệ bắt đúng loại và mang message thân thiện người dùng.
   - **Verify:** `pytest -m unit tests/unit/test_config.py tests/unit/test_logger.py tests/unit/test_exceptions.py -v`
   - **Files:** `src/config.py`, `src/utils/logger.py`, `src/core/exceptions.py`, `tests/unit/test_config.py`, `tests/unit/test_exceptions.py`
 
-- [ ] **Task 1.3: Quản lý thư mục Model & Weights tùy chỉnh (ModelWeightsManager)**
+- [x] **Task 1.3: Quản lý thư mục Model & Weights tùy chỉnh (ModelWeightsManager)**
   - **Mục tiêu:** Cài đặt `src/services/weights_manager.py` quản lý đường dẫn lưu trữ weights (mặc định `<app_root>/src/models/`, hỗ trợ tùy chỉnh qua UI), chuyển hướng các biến môi trường cache (`TORCH_HOME`, `HF_HOME`, `HUGGINGFACE_HUB_CACHE`, `PADDLE_HOME`, `EASYOCR_MODULE_PATH`), kiểm tra dung lượng ổ đĩa trống, xác thực chống Path Traversal và xử lý ngoại lệ `WeightsError`.
   - **Acceptance:** Biến môi trường được trỏ chuẩn xác về thư mục cấu hình; tính toán dung lượng đĩa trống chuẩn xác; ném `WeightsError` khi thiếu quyền ghi hoặc không đủ dung lượng; không ghi weights vào `~/.cache` ổ C.
   - **Verify:** `pytest -m unit tests/unit/test_weights_manager.py -v`
   - **Files:** `src/services/weights_manager.py`, `src/utils/file_utils.py`, `tests/unit/test_weights_manager.py`
 
-- [ ] **Task 1.4: Định nghĩa cấu trúc dữ liệu trung gian bất biến (Immutable Core Data Models)**
+- [x] **Task 1.4: Định nghĩa cấu trúc dữ liệu trung gian bất biến (Immutable Core Data Models)**
   - **Mục tiêu:** Cài đặt các data models cốt lõi tuân thủ triệt để nguyên tắc **Immutability**: `@dataclass(frozen=True)` cho `OCRDocument`, `OCRPage`, `OCRBlock`, `OCRLine`, `OCRWord`, `OCRTable`, `BoundingBox`.
   - **Acceptance:** Không thể gán sửa thuộc tính in-place sau khi khởi tạo; hỗ trợ đầy đủ tọa độ polygon/box, điểm tin cậy (confidence), loại khối (text, title, table, image); hỗ trợ hàm tạo bản sao có cập nhật (functional copy) và chuyển đổi 2 chiều sang `dict` / `json`.
   - **Verify:** `pytest -m unit tests/unit/test_models.py -v`
   - **Files:** `src/core/models.py`, `src/constants.py`, `tests/unit/test_models.py`
+
+**Kết quả nghiệm thu giai đoạn 1 (14/09/2026):**
+- Môi trường `.venv` Python 3.12.10 đã cài editable package và toàn bộ `requirements-dev.txt`; `pip check` không có dependency lỗi.
+- `python -m pytest tests/ --cov=src --cov-report=term-missing`: **87 passed**, coverage **93,15%** (bao gồm branch coverage), không có test bị bỏ qua.
+- `ruff check src/ tests/`, `black --check src/ tests/`, `python -X utf8 -m isort --check-only src/ tests/`, `mypy src/`, `bandit -c pyproject.toml -r src/`: đạt; Bandit không phát hiện vấn đề.
+- Build wheel thành công bằng `python -m pip wheel --no-cache-dir --no-deps --no-build-isolation --wheel-dir dist .`.
+- Smoke check thực tế xác nhận `logs/app.log`, thư mục mặc định `src/models/` và khởi tạo nền tảng không import các thư viện AI hoặc tải weights.
+- Các thư viện OCR nặng được khai báo trong extra `ocr` và `requirements.txt`; tích hợp provider, GUI và đóng gói executable tiếp tục theo các giai đoạn sau.
 
 ---
 
