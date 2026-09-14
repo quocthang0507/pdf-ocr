@@ -1,0 +1,76 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "pdf-ocr"
+version = "0.1.0"
+description = "Modular desktop OCR and document conversion application"
+readme = "README.md"
+requires-python = ">=3.10"
+dependencies = [
+    "PySide6>=6.6",
+    "PyMuPDF>=1.24",
+    "opencv-python>=4.9",
+    "python-docx>=1.1",
+    "openpyxl>=3.1",
+    "Pillow>=10.0",
+    "loguru>=0.7",
+]
+
+[project.optional-dependencies]
+ocr = [
+    "torch>=2.1",
+    "vietocr>=0.3.12",
+    "paddleocr>=2.7",
+    "surya-ocr>=0.5",
+    "transformers>=4.40",
+    "easyocr>=1.7",
+]
+
+[tool.setuptools.packages.find]
+include = ["src", "src.*"]
+exclude = ["src.models", "src.models.*"]
+namespaces = false
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+pythonpath = ["."]
+addopts = "--strict-markers --strict-config"
+qt_api = "pyside6"
+markers = [
+    "unit: isolated behavior tests, using temporary local files where necessary",
+    "integration: tests crossing application component boundaries",
+    "gui: tests requiring Qt widgets and a display",
+]
+
+[tool.coverage.run]
+source = ["src"]
+branch = true
+
+[tool.coverage.report]
+fail_under = 80
+show_missing = true
+
+[tool.black]
+line-length = 88
+target-version = ["py310"]
+
+[tool.isort]
+profile = "black"
+known_first_party = ["src"]
+
+[tool.ruff]
+line-length = 88
+target-version = "py310"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "UP", "B", "T20"]
+
+[tool.mypy]
+python_version = "3.10"
+strict = true
+files = ["src"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv"]

@@ -1,0 +1,15 @@
+# Full application stack from docs/implementation_plan.md.
+# Phase 1 only needs `pip install -e .`; OCR providers are optional until phase 3.
+PySide6>=6.6
+PyMuPDF>=1.24
+vietocr>=0.3.12
+paddleocr>=2.7
+surya-ocr>=0.5
+transformers>=4.40
+easyocr>=1.7
+opencv-python>=4.9
+python-docx>=1.1
+openpyxl>=3.1
+Pillow>=10.0
+torch>=2.1
+loguru>=0.7
