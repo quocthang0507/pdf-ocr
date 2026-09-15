@@ -227,7 +227,7 @@
 
 ### Giai Đoạn 6: Giao Diện Người Dùng PySide6 & Bộ So Sánh Lỗi (Modern PySide6 Desktop GUI)
 
-- [ ] **Task 6.1: Cửa sổ chính MainWindow, Thanh Menu Bar, Tool Bar & Error Boundary**
+- [x] **Task 6.1: Cửa sổ chính MainWindow, Thanh Menu Bar, Tool Bar & Error Boundary**
   - **Mục tiêu:** Cài đặt `src/gui/main_window.py`, `src/gui/components/menu_bar.py`, `src/gui/components/tool_bar.py` với các hành động: Mở file, Mở thư mục, Chạy OCR, Xuất file, Phóng to/thu nhỏ, Cài đặt. Tích hợp **GUI Error Boundary** (bắt toàn bộ `PDFOCRError` và exception bất ngờ, hiển thị `QMessageBox` an toàn, ghi log chi tiết, không làm crash GUI), **Drag & Drop** (kéo thả file từ File Explorer), **Recent Files** (menu 10 file gần nhất), **Window State Persistence** (lưu/phục hồi vị trí và bố trí dock bằng `QSettings`).
   - **Acceptance:** Cửa sổ chính khởi chạy mượt mà, đầy đủ menu chuẩn desktop, phím tắt (`Ctrl+O`, `Ctrl+S`, `Ctrl+Q`, `F5`); kéo thả file mở đúng; danh sách Recent Files cập nhật chính xác; đóng mở lại app giữ nguyên layout; khi core ném lỗi thì GUI hiển thị dialog thông báo thân thiện.
   - **Verify:** `pytest -m gui tests/gui/test_main_window.py -v`
