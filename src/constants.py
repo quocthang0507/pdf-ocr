@@ -16,3 +16,18 @@ class PageType(str, Enum):
     TEXT_BASED = "text_based"
     SCANNED = "scanned"
     HYBRID = "hybrid"
+
+
+#: Outline colour per layout block type, readable on light and dark pages.
+BLOCK_TYPE_COLORS: dict[BlockType, str] = {
+    BlockType.TEXT: "#2563eb",
+    BlockType.TITLE: "#d946ef",
+    BlockType.TABLE: "#059669",
+    BlockType.IMAGE: "#ea580c",
+}
+
+#: Background used to flag words the OCR engine was unsure about.
+LOW_CONFIDENCE_COLOR = "#fde68a"
+
+#: Outline colour of the block or region the user is currently working on.
+SELECTION_COLOR = "#dc2626"

@@ -233,7 +233,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_main_window.py -v`
   - **Files:** `src/gui/main_window.py`, `src/gui/components/menu_bar.py`, `src/gui/components/tool_bar.py`, `tests/gui/test_main_window.py`
 
-- [ ] **Task 6.2: Khung xem trước tài liệu tương tác (Document Canvas - QGraphicsView)**
+- [x] **Task 6.2: Khung xem trước tài liệu tương tác (Document Canvas - QGraphicsView)**
   - **Mục tiêu:** Cài đặt `src/gui/components/document_canvas.py` hiển thị ảnh trang tài liệu, hỗ trợ Zoom vô cực bằng con lăn chuột, Pan kéo thả, vẽ các hộp Bounding Box nhiều màu theo loại khối (Text, Title, Table).
   - **Acceptance:** Hiển thị ảnh sắc nét, thao tác zoom/pan mượt mà không giật lag, click chọn được bounding box trên ảnh.
   - **Verify:** `pytest -m gui tests/gui/test_document_canvas.py -v`
