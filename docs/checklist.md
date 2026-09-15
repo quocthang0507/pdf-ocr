@@ -253,7 +253,7 @@
   - **Mục tiêu:** Cài đặt `src/gui/dialogs/settings_dialog.py` cho phép người dùng:
     1. Chọn thư mục lưu Model & Weights tùy chỉnh (có nút Duyệt, validate đường dẫn chống Path Traversal và hiển thị dung lượng đĩa trống).
     2. Nút "Di chuyển Weights sang thư mục mới" với thanh tiến trình copy file.
-    3. Chọn thiết bị thực thi (`Tự động phát hiện`, `CPU`, `CUDA GPU`).
+    3. Chọn thiết bị thực thi (`Tự động phát hiện`, `CPU`, `CUDA GPU`), kèm **dò khả năng GPU** (CUDA khả dụng, tên thiết bị, VRAM) và cảnh báo rõ ràng khi máy không có GPU.
     4. Cấu hình thư mục Input/Output mặc định.
   - **Acceptance:** Thay đổi thư mục weights lập tức áp dụng qua `ModelWeightsManager` và lưu bền vững vào `ConfigManager`; kiểm tra dung lượng ổ đĩa khả dụng trước khi áp dụng.
   - **Verify:** `pytest -m gui tests/gui/test_settings_dialog.py -v`
@@ -266,7 +266,7 @@
   - **Files:** `src/gui/dialogs/table_editor.py`, `tests/gui/test_table_editor.py`
 
 - [ ] **Task 6.6: Hệ thống Theme giao diện hiện đại (Dark & Light Themes)**
-  - **Mục tiêu:** Xây dựng `src/gui/styles/dark_theme.qss` và `light_theme.qss` với ngôn ngữ thiết kế hiện đại, độ tương phản chuẩn, bo góc tinh tế, chuyển đổi theme tức thì.
+  - **Mục tiêu:** Xây dựng `src/gui/styles/dark_theme.qss` và `light_theme.qss` với ngôn ngữ thiết kế hiện đại, chuyên nghiệp: bảng màu và thang khoảng cách nhất quán, bo góc tinh tế, trạng thái hover/focus/disabled rõ ràng, độ tương phản văn bản đạt chuẩn WCAG AA, chuyển đổi theme tức thì (Sáng / Tối / Theo hệ thống).
   - **Acceptance:** Giao diện hiển thị chuyên nghiệp, không lỗi vỡ style khi chuyển đổi giữa chế độ Dark và Light.
   - **Verify:** `pytest -m gui tests/gui/test_theme_manager.py -v`
   - **Files:** `src/gui/styles/dark_theme.qss`, `src/gui/styles/light_theme.qss`, `src/gui/styles/style_manager.py`, `tests/gui/test_theme_manager.py`
@@ -288,6 +288,24 @@
   - **Acceptance:** Find & Replace hoạt động chuẩn: tìm đúng, thay thế đúng, hỗ trợ Replace All; tích hợp Undo/Redo.
   - **Verify:** `pytest -m gui tests/gui/test_find_replace.py -v`
   - **Files:** `src/gui/dialogs/find_replace.py`, `src/gui/components/comparison_dock.py`, `tests/gui/test_find_replace.py`
+
+- [ ] **Task 6.10: Kho cấu hình SQLite của ứng dụng (Application Settings Database)**
+  - **Mục tiêu:** Bổ sung `src/services/settings_store.py` dùng **SQLite** (thư viện chuẩn `sqlite3`) đặt trong thư mục ứng dụng để lưu cài đặt, tham số engine, lịch sử tệp và thông số phiên làm việc. `ConfigManager` đọc/ghi SQLite làm **nguồn chính**, vẫn xuất bản sao JSON để tương thích ngược và cho người dùng xem; tự nạp dữ liệu JSON cũ vào cơ sở dữ liệu ở lần chạy đầu.
+  - **Acceptance:** Cài đặt lưu bền vững qua các lần khởi động; cấu hình JSON cũ được di chuyển sang SQLite không mất dữ liệu; ghi dữ liệu là giao dịch nguyên tử, hỏng tệp cơ sở dữ liệu vẫn không làm sập ứng dụng; câu lệnh SQL luôn tham số hóa.
+  - **Verify:** `pytest -m unit tests/unit/test_settings_store.py -v`
+  - **Files:** `src/services/settings_store.py`, `src/config.py`, `tests/unit/test_settings_store.py`
+
+- [ ] **Task 6.11: Hệ thống thông báo tùy chỉnh trong ứng dụng (Custom Toast Notifications)**
+  - **Mục tiêu:** Cài đặt `src/gui/components/notifications.py` cung cấp thông báo toast bốn cấp (thành công, thông tin, cảnh báo, lỗi): hiện ở góc cửa sổ, tự ẩn sau thời gian cấu hình, xếp chồng nhiều thông báo, có nút đóng và không chặn thao tác người dùng. Thay các `QMessageBox` không bắt buộc bằng toast; chỉ giữ hộp thoại chặn cho lỗi nghiêm trọng cần người dùng xác nhận.
+  - **Acceptance:** Thông báo hiển thị đúng cấp độ và màu sắc theo theme, tự ẩn đúng thời gian, nhiều thông báo không đè lên nhau, đóng ứng dụng khi còn toast không gây lỗi.
+  - **Verify:** `pytest -m gui tests/gui/test_notifications.py -v`
+  - **Files:** `src/gui/components/notifications.py`, `src/gui/main_window.py`, `tests/gui/test_notifications.py`
+
+- [ ] **Task 6.12: Đa ngôn ngữ giao diện Việt - Anh (Interface Localization)**
+  - **Mục tiêu:** Cài đặt `src/gui/i18n.py` quản lý `QTranslator`, bảng ngôn ngữ khả dụng và ngôn ngữ mặc định (tiếng Việt). Đưa chuỗi hiển thị của giao diện qua cơ chế dịch, bổ sung mục chọn ngôn ngữ trong Hộp thoại Cài đặt và lưu lựa chọn vào kho cấu hình.
+  - **Acceptance:** Đổi ngôn ngữ trong Cài đặt áp dụng ngay cho giao diện đang mở; khởi động lại vẫn giữ đúng ngôn ngữ đã chọn; thiếu tệp dịch thì lùi về tiếng Việt thay vì báo lỗi.
+  - **Verify:** `pytest -m gui tests/gui/test_i18n.py -v`
+  - **Files:** `src/gui/i18n.py`, `src/gui/dialogs/settings_dialog.py`, `tests/gui/test_i18n.py`
 
 ---
 

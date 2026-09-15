@@ -706,16 +706,16 @@ Tài liệu [docs/checklist.md](file:///d:/GitHub/pdf-ocr/docs/checklist.md) là
 
 ## 11. Câu Hỏi Mở (Open Questions)
 
-> Các vấn đề chưa thống nhất cần phản hồi từ người dùng/stakeholder trước khi triển khai:
+> Toàn bộ câu hỏi mở đã được stakeholder phản hồi ngày 15/09/2026. Nội dung chốt được ghi tại Mục 12.
 
-1. **Hệ điều hành hỗ trợ:** Chỉ Windows hay bao gồm cả macOS/Linux?
-2. **Đa ngôn ngữ giao diện (i18n):** Giao diện chỉ tiếng Việt hay hỗ trợ song ngữ Việt-Anh?
-3. **Cơ chế cập nhật tự động (Auto-update):** Có cần tích hợp auto-update cho ứng dụng Desktop không?
-4. **Giấy phép phần mềm (License):** MIT, GPL, hay proprietary?
-5. **Phiên bản Python tối thiểu:** Python 3.10+ hay 3.11+?
-6. ~~**Offline-first:** Ứng dụng có cần hoạt động hoàn toàn offline sau khi đã tải weights không?~~ *(Đã giải quyết: Đạt chuẩn Portable Offline-first, mang kèm thư mục models sang máy khác là chạy được ngay).*
-7. **Giới hạn xử lý:** Max file size và max page count cho batch processing?
-8. **GPU tối thiểu:** Yêu cầu VRAM tối thiểu cho các model OCR nặng (PaddleOCR, TrOCR)?
+1. ~~**Hệ điều hành hỗ trợ:** Chỉ Windows hay bao gồm cả macOS/Linux?~~ *(Đã chốt: đa nền tảng Windows/macOS/Linux — xem 12.5).*
+2. ~~**Đa ngôn ngữ giao diện (i18n):** Giao diện chỉ tiếng Việt hay hỗ trợ song ngữ Việt-Anh?~~ *(Đã chốt: đa ngôn ngữ, mặc định tiếng Việt — xem 12.6).*
+3. ~~**Cơ chế cập nhật tự động (Auto-update):** Có cần tích hợp auto-update không?~~ *(Đã chốt: chưa triển khai trong phạm vi hiện tại — xem 12.7).*
+4. ~~**Giấy phép phần mềm (License):** MIT, GPL, hay proprietary?~~ *(Đã chốt: **MIT** — xem 12.8).*
+5. ~~**Phiên bản Python tối thiểu:** Python 3.10+ hay 3.11+?~~ *(Đã chốt: **Python 3.10+** — xem 12.9).*
+6. ~~**Offline-first:** Ứng dụng có cần hoạt động hoàn toàn offline sau khi đã tải weights không?~~ *(Đã chốt: Portable Offline-first — xem 12.4).*
+7. ~~**Giới hạn xử lý:** Max file size và max page count cho batch processing?~~ *(Đã chốt: có áp giới hạn dung lượng tệp, cấu hình được — xem 12.10).*
+8. ~~**GPU tối thiểu:** Yêu cầu VRAM tối thiểu cho các model OCR nặng?~~ *(Đã chốt: hỗ trợ cả GPU và CPU, ứng dụng tự dò khả năng GPU — xem 12.11).*
 
 ---
 
@@ -725,4 +725,15 @@ Tài liệu [docs/checklist.md](file:///d:/GitHub/pdf-ocr/docs/checklist.md) là
 2. **Vị trí lưu Weights:** Mặc định tại `<app_root>/src/models/`, có thể tùy chỉnh bất kỳ thư mục nào qua giao diện Cài đặt, có hiển thị dung lượng đĩa trống.
 3. **Kiến trúc mở rộng:** Áp dụng Clean Architecture và Provider Pattern cho Engine OCR và Exporter, cho phép bổ sung các mô hình AI trong tương lai dễ dàng.
 4. **Đóng gói & Chế độ Portable:** Hỗ trợ đóng gói độc lập bằng **PyInstaller** (chế độ Onedir). Cho phép copy toàn bộ thư mục bundle kèm thư mục `src/models/` sang máy tính khác (kể cả máy không có Python và không có Internet) để chạy ngay 100% offline.
-
+5. **Đa nền tảng (Cross-platform):** Hỗ trợ **Windows, macOS và Linux**. Mọi đường dẫn dùng `pathlib`, không khóa cứng dấu phân cách; mọi thư mục dữ liệu nằm trong `<app_root>` để giữ tính portable trên cả ba hệ điều hành.
+6. **Đa ngôn ngữ giao diện (i18n):** Hỗ trợ **nhiều ngôn ngữ**, mặc định tiếng Việt và có tiếng Anh. Chuỗi hiển thị đi qua cơ chế dịch của Qt (`tr()` / `QTranslator`), người dùng đổi ngôn ngữ trong Cài đặt.
+7. **Cập nhật tự động (Auto-update):** **Chưa triển khai** trong phạm vi hiện tại. Không thêm dependency hay dịch vụ nền cho việc này.
+8. **Giấy phép phần mềm:** **MIT License**.
+9. **Phiên bản Python tối thiểu:** **Python 3.10+** (`requires-python = ">=3.10"`).
+10. **Giới hạn xử lý:** Áp **giới hạn dung lượng tệp đầu vào** (mặc định 200 MB) và giới hạn số trang cho mỗi lần xử lý; giá trị nằm trong cấu hình, người dùng điều chỉnh được, vượt ngưỡng thì báo lỗi thân thiện thay vì treo ứng dụng.
+11. **Thiết bị thực thi:** Hỗ trợ đồng thời **GPU và CPU**. Ứng dụng **tự dò khả năng GPU** (CUDA khả dụng, tên thiết bị, VRAM) và hiển thị trong Cài đặt; chế độ `Tự động` chọn GPU khi khả dụng và lùi về CPU khi không.
+12. **Giao diện & Trải nghiệm (UI/UX):** Giao diện phải **đẹp mắt, chuyên nghiệp** — hệ thống theme Sáng/Tối nhất quán, khoảng cách và bo góc đồng bộ, độ tương phản đạt chuẩn, biểu tượng rõ ràng.
+13. **Kho cấu hình riêng của ứng dụng:** Ứng dụng có **cơ sở dữ liệu riêng (SQLite)** đặt trong thư mục ứng dụng để lưu cài đặt, tham số engine, lịch sử tệp và thông số phiên làm việc. `ConfigManager` là lớp truy cập duy nhất; JSON/QSettings giữ vai trò bản sao tương thích ngược.
+14. **Hiệu năng & Độ mượt:** Ứng dụng phải chạy mượt trên cấu hình phổ thông: mọi tác vụ nặng chạy nền (`QThreadPool`/`QRunnable`), giao diện không bao giờ bị khóa, giải phóng bộ nhớ sau mỗi trang.
+15. **Chống lỗi & Chống treo:** Error Boundary bắt trọn mọi ngoại lệ tại tầng GUI, không để exception thoát ra vòng lặp sự kiện; tác vụ nền báo lỗi qua tín hiệu thay vì làm sập ứng dụng.
+16. **Hệ thống thông báo tùy chỉnh (Custom Notifications):** Thay cho việc lạm dụng `QMessageBox`, ứng dụng dùng **thông báo toast trong ứng dụng** (thành công / cảnh báo / lỗi / thông tin), tự ẩn sau thời gian ngắn, có thể xếp chồng và không chặn thao tác người dùng.
