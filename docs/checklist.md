@@ -104,41 +104,49 @@
 
 ### Giai Đoạn 3: Hệ Thống Module OCR Đa Mô Hình & Kiến Trúc Provider Mở Rộng (Extensible Multi-Engine System)
 
-- [ ] **Task 3.1: Thiết kế giao diện cơ sở BaseOCREngine, EngineRegistry & Context Manager VRAM**
+- [x] **Task 3.1: Thiết kế giao diện cơ sở BaseOCREngine, EngineRegistry & Context Manager VRAM**
   - **Mục tiêu:** Cài đặt Abstract Base Class `BaseOCREngine` và `EngineRegistry` với cơ chế đăng ký decorator `@register_engine`. Tích hợp **Context Manager `engine_session`** quản lý vòng đời nạp/giải phóng model, tự động thu hồi VRAM (`torch.cuda.empty_cache()`, `gc.collect()`). Tích hợp schema validation cho tham số cấu hình engine (kiểm tra miền giá trị hợp lệ) và xử lý ngoại lệ `OCREngineError`.
   - **Acceptance:** Cho phép thêm engine mới mà không cần sửa core logic; context manager tự động dọn sạch GPU VRAM sau khi thoát khối `with`; ném `OCREngineError` khi khởi tạo model thất bại; nạp lười (Lazy Loading) thành công.
   - **Verify:** `pytest -m unit tests/unit/test_engine_registry.py -v`
   - **Files:** `src/engines/base_engine.py`, `src/engines/engine_registry.py`, `tests/unit/test_engine_registry.py`
 
-- [ ] **Task 3.2: Tích hợp VietOCR Provider (Chuyên sâu tiếng Việt)**
+- [x] **Task 3.2: Tích hợp VietOCR Provider (Chuyên sâu tiếng Việt)**
   - **Mục tiêu:** Cài đặt `src/engines/vietocr_engine.py` lưu weights vào `src/models/vietocr/`, hỗ trợ các kiến trúc `vgg_transformer`, `vgg_seq2seq`, cấu hình `device`, nạp model weights an toàn với `OCREngineError` handling.
   - **Acceptance:** Nhận diện chính xác 100% dòng chữ tiếng Việt có dấu phức tạp trong ảnh mẫu fixture; giải phóng VRAM khi hoàn tất.
   - **Verify:** `pytest -m unit tests/unit/test_vietocr_engine.py -v`
   - **Files:** `src/engines/vietocr_engine.py`, `tests/unit/test_vietocr_engine.py`
 
-- [ ] **Task 3.3: Tích hợp PaddleOCR Provider (Tốc độ cao & Bảng biểu)**
+- [x] **Task 3.3: Tích hợp PaddleOCR Provider (Tốc độ cao & Bảng biểu)**
   - **Mục tiêu:** Cài đặt `src/engines/paddle_engine.py` lưu weights vào `src/models/paddle/`, hỗ trợ Text Detection (DBNet) + Text Recognition (SVTR) và tích hợp PP-Structure phát hiện bảng.
   - **Acceptance:** Trả về bounding box, text và độ tin cậy; nhận diện được các ô trong bảng biểu; ném `OCREngineError` rõ ngữ cảnh khi weights thiếu.
   - **Verify:** `pytest -m unit tests/unit/test_paddle_engine.py -v`
   - **Files:** `src/engines/paddle_engine.py`, `tests/unit/test_paddle_engine.py`
 
-- [ ] **Task 3.4: Tích hợp Surya OCR Provider (Đa ngôn ngữ & Thứ tự đọc)**
+- [x] **Task 3.4: Tích hợp Surya OCR Provider (Đa ngôn ngữ & Thứ tự đọc)**
   - **Mục tiêu:** Cài đặt `src/engines/surya_engine.py` lưu weights vào `src/models/surya/`, hỗ trợ phát hiện văn bản và nhận diện đa ngôn ngữ, hỗ trợ cấu hình danh sách ngôn ngữ (`langs`).
   - **Acceptance:** Nhận diện văn bản đa ngôn ngữ và trả về tọa độ chính xác cho từng dòng.
   - **Verify:** `pytest -m unit tests/unit/test_surya_engine.py -v`
   - **Files:** `src/engines/surya_engine.py`, `tests/unit/test_surya_engine.py`
 
-- [ ] **Task 3.5: Tích hợp Transformer OCR / TrOCR Provider (Chữ viết tay & chữ in)**
+- [x] **Task 3.5: Tích hợp Transformer OCR / TrOCR Provider (Chữ viết tay & chữ in)**
   - **Mục tiêu:** Cài đặt `src/engines/transformer_engine.py` lưu weights vào `src/models/trocr/`, sử dụng HuggingFace TrOCR (hỗ trợ checkpoint `microsoft/trocr-base-handwritten` và `microsoft/trocr-base-printed`).
   - **Acceptance:** Nhận diện chuẩn xác ảnh mẫu dòng chữ viết tay (Handwriting); xử lý timeout/error an toàn.
   - **Verify:** `pytest -m unit tests/unit/test_transformer_engine.py -v`
   - **Files:** `src/engines/transformer_engine.py`, `tests/unit/test_transformer_engine.py`
 
-- [ ] **Task 3.6: Tích hợp EasyOCR Provider (Dự phòng gọn nhẹ)**
+- [x] **Task 3.6: Tích hợp EasyOCR Provider (Dự phòng gọn nhẹ)**
   - **Mục tiêu:** Cài đặt `src/engines/easyocr_engine.py` lưu weights vào `src/models/easyocr/`, hỗ trợ đa ngôn ngữ nhanh chóng, độc lập.
   - **Acceptance:** Nhận diện trả về kết quả chuẩn theo chuẩn `OCRPage`.
   - **Verify:** `pytest -m unit tests/unit/test_easyocr_engine.py -v`
   - **Files:** `src/engines/easyocr_engine.py`, `tests/unit/test_easyocr_engine.py`
+
+**Kết quả nghiệm thu giai đoạn 3 (15/09/2026):**
+- Hoàn thành toàn bộ 6/6 tasks của Giai đoạn 3 (`Task 3.1` -> `Task 3.6`), với 5 provider được đăng ký tự động nhưng chỉ import framework AI khi `load_model()` được gọi.
+- `python -m pytest tests/ --cov=src --cov-report=term-missing`: **154 passed**, coverage **86,39%** (bao gồm branch coverage), không có test bị bỏ qua; riêng Giai đoạn 3 bổ sung **21 unit tests** xác định hành vi.
+- Từng lệnh `Verify` của `Task 3.1` -> `Task 3.6` đều đạt; backend nặng được thay bằng test doubles xác định để kiểm tra adapter hoàn toàn offline, không tải model/weights trong unit test. Kiểm định chất lượng OCR bằng weights thật thuộc E2E Giai đoạn 8.
+- Quality gates: `black --check src/ tests/`, `isort --check-only src/ tests/`, `ruff check src/ tests/`, `mypy src/`, `bandit -c pyproject.toml -r src/` và `git diff --check` đều đạt; không có lỗi type, lint hay security.
+- Registry smoke test xác nhận đủ `vietocr`, `paddle`, `surya`, `trocr`, `easyocr` và không import `torch`/framework OCR khi chỉ nạp package. PaddleOCR tương thích định dạng API 2.x/3.x; Surya tương thích API predictor cũ và `SuryaInferenceManager` mới.
+- Tất cả file mới dưới 800 dòng và không có hàm mới vượt 50 dòng; dữ liệu OCR được chuẩn hóa về domain models bất biến, cấu hình được kiểm tra miền giá trị và lỗi backend được bọc bằng `OCREngineError` an toàn.
 
 ---
 
