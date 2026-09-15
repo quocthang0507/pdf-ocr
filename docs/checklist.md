@@ -239,7 +239,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_document_canvas.py -v`
   - **Files:** `src/gui/components/document_canvas.py`, `tests/gui/test_document_canvas.py`
 
-- [ ] **Task 6.3: Bộ so sánh lỗi song song & Trình soạn thảo văn bản (Side-by-Side Verification Editor)**
+- [x] **Task 6.3: Bộ so sánh lỗi song song & Trình soạn thảo văn bản (Side-by-Side Verification Editor)**
   - **Mục tiêu:** Cài đặt `src/gui/components/comparison_dock.py` kết nối đồng bộ hai chiều giữa `DocumentCanvas` (ảnh gốc) và `QTextEdit` (văn bản quét):
     1. Click từ bên text -> Canvas tự động zoom/pan đến vùng ảnh gốc tương ứng.
     2. Click bounding box trên Canvas -> Con trỏ text nhảy đến vị trí từ tương ứng.

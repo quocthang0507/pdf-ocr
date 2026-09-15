@@ -6,11 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
-from PySide6.QtCore import QByteArray, QMimeData, QSettings, Qt, Signal
+from PySide6.QtCore import QByteArray, QMimeData, QSettings, Signal
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
     QFileDialog,
-    QLabel,
     QMainWindow,
     QMessageBox,
     QStatusBar,
@@ -19,6 +18,7 @@ from PySide6.QtWidgets import (
 
 from src.core.document_loader import SUPPORTED_EXTENSIONS
 from src.core.exceptions import DocumentLoadError, PDFOCRError
+from src.gui.components.comparison_dock import ComparisonDock
 from src.gui.components.menu_bar import (
     MAX_RECENT_FILES,
     ApplicationMenuBar,
@@ -254,12 +254,11 @@ class MainWindow(QMainWindow):
             f"{APPLICATION_NAME}\nNhận diện văn bản và chuyển đổi tài liệu.",
         )
 
-    @staticmethod
-    def _create_document_view() -> QWidget:
-        placeholder = QLabel("Kéo thả tệp PDF hoặc ảnh vào đây để bắt đầu.")
-        placeholder.setObjectName("document_placeholder")
-        placeholder.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        return placeholder
+    def _create_document_view(self) -> QWidget:
+        """Build the verification editor and route view commands into it."""
+        self.comparison = ComparisonDock(self)
+        self.zoom_requested.connect(self.comparison.apply_zoom)
+        return self.comparison
 
 
 def _dropped_documents(mime: QMimeData) -> tuple[Path, ...]:
