@@ -152,29 +152,36 @@
 
 ### Giai Đoạn 4: Phân Tích Bố Cục, Bảng Biểu & Hậu Xử Lý Tiếng Việt (Layout, Tables & Post-processing)
 
-- [ ] **Task 4.1: Phân tích bố cục đa cột & sắp xếp thứ tự đọc (Reading Order Sorter)**
+- [x] **Task 4.1: Phân tích bố cục đa cột & sắp xếp thứ tự đọc (Reading Order Sorter)**
   - **Mục tiêu:** Cài đặt thuật toán XY-Cut / Topological Sorting phân tích luồng đọc tài liệu nhiều cột (2-3 cột báo/tạp chí) trong `src/core/layout_analyzer.py`.
   - **Acceptance:** Thứ tự các đoạn văn được sắp xếp tự nhiên theo từng cột từ trên xuống dưới, không bị đọc nối ngang giữa 2 cột.
   - **Verify:** `pytest -m unit tests/unit/test_layout_analyzer.py -v`
   - **Files:** `src/core/layout_analyzer.py`, `tests/unit/test_layout_analyzer.py`
 
-- [ ] **Task 4.2: Trích xuất ma trận cấu trúc bảng biểu (Table Extractor)**
+- [x] **Task 4.2: Trích xuất ma trận cấu trúc bảng biểu (Table Extractor)**
   - **Mục tiêu:** Cài đặt `src/core/table_extractor.py` kết hợp tọa độ ô phát hiện được từ OCR với văn bản để dựng lưới dữ liệu 2D (hàng, cột, ô gộp).
   - **Acceptance:** Chuyển đổi vùng bảng biểu thành ma trận dữ liệu 2D chính xác, bảo toàn thứ tự dòng và cột.
   - **Verify:** `pytest -m unit tests/unit/test_table_extractor.py -v`
   - **Files:** `src/core/table_extractor.py`, `tests/unit/test_table_extractor.py`
 
-- [ ] **Task 4.3: Chuẩn hóa tiếng Việt NFC, Chấm điểm tin cậy & Sửa lỗi chính tả OCR (Postprocessor)**
+- [x] **Task 4.3: Chuẩn hóa tiếng Việt NFC, Chấm điểm tin cậy & Sửa lỗi chính tả OCR (Postprocessor)**
   - **Mục tiêu:** Cài đặt `src/core/postprocessor.py` chuẩn hóa Unicode NFC, xử lý dấu thanh tiếng Việt kiểu mới/cũ, áp dụng regex sửa lỗi nhầm lẫn OCR phổ biến (`l/1/I`, `0/O`); đánh giá điểm tin cậy (Confidence score 0.0 - 1.0) cho từng từ và gắn cờ các từ $< 80\%$ để phục vụ highlight trên UI.
   - **Acceptance:** Toàn bộ text xuất ra ở chuẩn Unicode NFC; các lỗi nhầm lẫn ký tự cơ bản được tự động khắc phục; cờ cảnh báo tin cậy thấp được thiết lập chính xác trên đối tượng `OCRWord`.
   - **Verify:** `pytest -m unit tests/unit/test_postprocessor.py -v`
   - **Files:** `src/core/postprocessor.py`, `tests/unit/test_postprocessor.py`
 
-- [ ] **Task 4.4: Xây dựng Pipeline tích hợp toàn trình & Phục hồi lỗi (Core Pipeline Orchestrator)**
+- [x] **Task 4.4: Xây dựng Pipeline tích hợp toàn trình & Phục hồi lỗi (Core Pipeline Orchestrator)**
   - **Mục tiêu:** Cài đặt `src/services/pipeline_service.py` kết nối xuyên suốt: DocumentLoader -> **PDFClassifier (phân nhánh tự động)** -> [Trang text-based: trích xuất trực tiếp | Trang scanned: Preprocessor -> LayoutAnalyzer -> OCREngine] -> Postprocessor. Tích hợp Error Boundaries và cơ chế gợi ý engine dự phòng (graceful fallback) khi có lỗi.
   - **Acceptance:** Chạy pipeline với 1 file PDF hỗn hợp (có trang text-based lẫn trang scanned), nhận được đối tượng `OCRDocument` hoàn chỉnh; trang text-based được xử lý nhanh gấp 10 lần so với trang scanned; bắt và bọc lỗi sạch sẽ vào `PDFOCRError`.
   - **Verify:** `pytest -m integration tests/integration/test_pipeline.py -v`
   - **Files:** `src/services/pipeline_service.py`, `tests/integration/test_pipeline.py`
+
+**Kết quả nghiệm thu giai đoạn 4 (15/09/2026):**
+- Hoàn thành toàn bộ 4/4 tasks của Giai đoạn 4 (`Task 4.1` -> `Task 4.4`), bổ sung **19 tests** cho layout đa cột, bảng/ô gộp, hậu xử lý tiếng Việt và pipeline tích hợp.
+- `pytest --cov=src --cov-report=term-missing`: **173 passed**, coverage **86,44%** (bao gồm branch coverage), không có test bị bỏ qua.
+- Từng lệnh `Verify` của `Task 4.1` -> `Task 4.4` đều đạt; integration test dùng PDF hỗn hợp thật và xác nhận trang text-based đi theo fast path, không rasterize, không tiền xử lý và không gọi OCR engine.
+- Pipeline duy trì một engine session dùng lại giữa các trang, tự chuyển sang engine dự phòng khi nhận diện lỗi, hợp nhất trang hybrid và bọc lỗi bất ngờ bằng `PDFOCRError` không làm lộ chi tiết nội bộ.
+- Quality gates `black`, `isort`, `ruff`, `mypy --strict`, `bandit`, `git diff --check` đều đạt; rà soát 5 trục không còn phát hiện bắt buộc, mọi file dưới 800 dòng và hàm dưới 50 dòng.
 
 ---
 

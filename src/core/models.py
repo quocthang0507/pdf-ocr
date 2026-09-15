@@ -230,11 +230,28 @@ class OCRBlock(ImmutableModel):
 
 
 @dataclass(frozen=True)
+class TableCellSpan(ImmutableModel):
+    """Logical position and extent of one merged table cell."""
+
+    row: int
+    column: int
+    row_span: int = 1
+    column_span: int = 1
+
+    def __post_init__(self) -> None:
+        _integer(self.row, "row")
+        _integer(self.column, "column")
+        _integer(self.row_span, "row_span", 1)
+        _integer(self.column_span, "column_span", 1)
+
+
+@dataclass(frozen=True)
 class OCRTable(ImmutableModel):
-    """Rectangular immutable text matrix for the initial domain contract."""
+    """Rectangular immutable text matrix with optional merged-cell metadata."""
 
     rows: tuple[tuple[str, ...], ...]
     bbox: BoundingBox
+    merged_cells: tuple[TableCellSpan, ...] = ()
 
     def __post_init__(self) -> None:
         _box(self.bbox)
@@ -249,6 +266,15 @@ class OCRTable(ImmutableModel):
         if rows and any(len(row) != len(rows[0]) for row in rows):
             raise ValueError("Các hàng trong bảng phải có cùng số cột.")
         object.__setattr__(self, "rows", rows)
+        _freeze_children(self, "merged_cells", TableCellSpan)
+        row_count = len(rows)
+        column_count = len(rows[0]) if rows else 0
+        if any(
+            span.row + span.row_span > row_count
+            or span.column + span.column_span > column_count
+            for span in self.merged_cells
+        ):
+            raise ValueError("Ô gộp phải nằm trong phạm vi bảng.")
 
 
 @dataclass(frozen=True)
