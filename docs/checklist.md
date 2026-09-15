@@ -187,35 +187,41 @@
 
 ### Giai Đoạn 5: Bộ Xuất Tài Liệu Đa Định Dạng Mở Rộng (Extensible Multi-Format Exporters)
 
-- [ ] **Task 5.1: Thiết kế giao diện BaseExporter, ExporterRegistry & Kiểm tra đường dẫn xuất**
+- [x] **Task 5.1: Thiết kế giao diện BaseExporter, ExporterRegistry & Kiểm tra đường dẫn xuất**
   - **Mục tiêu:** Cài đặt Abstract Base Class `BaseExporter` và `ExporterRegistry` cho phép đăng ký linh hoạt các định dạng xuất mới bằng `@register_exporter`. Tích hợp Input Validation kiểm tra quyền ghi (write permission) và dung lượng đĩa khả dụng của đường dẫn đích, ném `ExportError` khi không đạt.
   - **Acceptance:** Dễ dàng đăng ký thêm các định dạng xuất mới; ném `ExportError` rõ ràng khi phân vùng đầy hoặc không có quyền ghi; không làm crash pipeline.
   - **Verify:** `pytest -m unit tests/unit/test_exporter_registry.py -v`
   - **Files:** `src/exporters/base_exporter.py`, `src/exporters/exporter_registry.py`, `tests/unit/test_exporter_registry.py`
 
-- [ ] **Task 5.2: Bộ xuất Searchable PDF (Ctrl + F với Invisible Text Layer)**
+- [x] **Task 5.2: Bộ xuất Searchable PDF (Ctrl + F với Invisible Text Layer)**
   - **Mục tiêu:** Cài đặt `src/exporters/pdf_exporter.py` sử dụng PyMuPDF nhúng lớp chữ vô hình (render mode 3 - invisible text) trùng khớp 100% tọa độ bounding box với ảnh scan gốc.
   - **Acceptance:** File PDF đầu ra giữ nguyên hình ảnh sắc nét gốc, cho phép bôi đen chuột, copy text và tìm kiếm bằng `Ctrl + F` trên Adobe Reader / Chrome.
   - **Verify:** `pytest -m unit tests/unit/test_pdf_exporter.py -v`
   - **Files:** `src/exporters/pdf_exporter.py`, `tests/unit/test_pdf_exporter.py`
 
-- [ ] **Task 5.3: Bộ xuất Microsoft Word (.docx) bảo toàn bố cục & bảng biểu**
+- [x] **Task 5.3: Bộ xuất Microsoft Word (.docx) bảo toàn bố cục & bảng biểu**
   - **Mục tiêu:** Cài đặt `src/exporters/docx_exporter.py` sử dụng `python-docx` tái tạo các cấp tiêu đề (H1, H2, H3), đoạn văn canh lề, ngắt trang và bảng biểu định dạng bảng Word.
   - **Acceptance:** File `.docx` mở được trực tiếp trên Microsoft Word / Google Docs, bảng biểu có viền và ô ngăn nắp.
   - **Verify:** `pytest -m unit tests/unit/test_docx_exporter.py -v`
   - **Files:** `src/exporters/docx_exporter.py`, `tests/unit/test_docx_exporter.py`
 
-- [ ] **Task 5.4: Bộ xuất Microsoft Excel (.xlsx) cho bảng biểu**
+- [x] **Task 5.4: Bộ xuất Microsoft Excel (.xlsx) cho bảng biểu**
   - **Mục tiêu:** Cài đặt `src/exporters/xlsx_exporter.py` sử dụng `openpyxl` trích xuất toàn bộ bảng phát hiện được thành các Worksheet riêng biệt hoặc nối tiếp.
   - **Acceptance:** File `.xlsx` mở trên Microsoft Excel hiển thị dữ liệu bảng chuẩn xác theo hàng và cột.
   - **Verify:** `pytest -m unit tests/unit/test_xlsx_exporter.py -v`
   - **Files:** `src/exporters/xlsx_exporter.py`, `tests/unit/test_xlsx_exporter.py`
 
-- [ ] **Task 5.5: Bộ xuất Markdown (.md), Plain Text (.txt) & JSON**
+- [x] **Task 5.5: Bộ xuất Markdown (.md), Plain Text (.txt) & JSON**
   - **Mục tiêu:** Cài đặt `src/exporters/text_exporter.py` và `src/exporters/json_exporter.py`.
   - **Acceptance:** Xuất text định dạng Markdown tiêu chuẩn (tiêu đề `#`, bảng Markdown `|---|`) và file JSON chứa tọa độ chi tiết.
   - **Verify:** `pytest -m unit tests/unit/test_text_json_exporters.py -v`
   - **Files:** `src/exporters/text_exporter.py`, `src/exporters/json_exporter.py`, `tests/unit/test_text_json_exporters.py`
+
+**Kết quả nghiệm thu giai đoạn 5 (15/09/2026):**
+- Hoàn thành toàn bộ 5/5 tasks của Giai đoạn 5 (`Task 5.1` -> `Task 5.5`), với registry mở rộng cho PDF, DOCX, XLSX, Markdown, plain text và JSON.
+- Các bộ xuất dùng ghi tệp nguyên tử, kiểm tra phần mở rộng/quyền ghi/dung lượng đĩa; Excel giữ Unicode, ô gộp, header style và fallback text; JSON giữ đầy đủ tọa độ OCR.
+- Từng lệnh Verify của `Task 5.1` -> `Task 5.5` đều đạt; nhóm kiểm thử exporter hiện có **16 passed**.
+- Đã render/kiểm tra trực quan output PDF searchable và DOCX; output XLSX được đọc lại bằng `openpyxl` để xác nhận worksheet, merge, style, freeze pane và metadata.
 
 ---
 
