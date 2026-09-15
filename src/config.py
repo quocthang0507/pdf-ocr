@@ -5,11 +5,17 @@ from __future__ import annotations
 import json
 import os
 import tempfile
+from collections.abc import Mapping
 from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
 from src.core.exceptions import ConfigError
+from src.services.settings_store import (
+    DATABASE_NAME,
+    PREFERENCES_SECTION,
+    SettingsStore,
+)
 from src.utils.file_utils import get_app_root
 from src.utils.logger import logger
 
@@ -47,6 +53,35 @@ def _create_qsettings(path: Path) -> QSettings:
     return settings
 
 
+_NULL_MARKER = ""
+
+
+def _encode_fields(preferences: Preferences) -> dict[str, str]:
+    """Store optional paths as an empty marker; SQLite rows are always text."""
+    return {
+        name: _NULL_MARKER if value is None else str(value)
+        for name, value in asdict(preferences).items()
+    }
+
+
+def _build_preferences(values: Mapping[str, str]) -> Preferences:
+    """Rebuild preferences from text rows, restoring the "use default" marker."""
+    fields = {
+        name: None if value == _NULL_MARKER else value for name, value in values.items()
+    }
+    return Preferences(
+        weights_dir=fields.get("weights_dir"),
+        input_dir=fields.get("input_dir"),
+        output_dir=fields.get("output_dir"),
+        device=fields.get("device") or "auto",
+        theme=fields.get("theme") or "system",
+    )
+
+
+def _create_store(path: Path) -> SettingsStore:
+    return SettingsStore(path)
+
+
 def _decode_preferences(payload: str) -> Preferences:
     values = json.loads(payload)
     if not isinstance(values, dict):
@@ -57,10 +92,11 @@ def _decode_preferences(payload: str) -> Preferences:
 class ConfigManager:
     """Stateful storage adapter; returned preferences are always immutable.
 
-    JSON is committed first and wins when present, so a failed Qt sync never
-    restores an older value. QSettings supplies native Qt integration and can
-    recover preferences when the JSON copy is missing or damaged. Both files
-    stay inside the application directory by default, including portable mode.
+    The application SQLite database is the primary store and is read first.
+    The JSON copy is a human readable mirror that also carries preferences
+    written by older versions, and it is imported into the database the first
+    time it is seen. QSettings remains the last resort for native Qt recovery.
+    Every file stays inside the application directory, including portable mode.
     """
 
     def __init__(
@@ -70,7 +106,13 @@ class ConfigManager:
             Path(config_dir) if config_dir is not None else get_app_root() / "config"
         )
         self.json_path = self.directory / "preferences.json"
+        self.database_path = self.directory / DATABASE_NAME
         self._settings: QSettings | None = None
+        self._store: SettingsStore | None = None
+        try:
+            self._store = _create_store(self.database_path)
+        except ConfigError:
+            logger.warning("Cơ sở dữ liệu cấu hình không khả dụng; dùng bản sao JSON.")
         if use_qsettings:
             try:
                 self._settings = _create_qsettings(self.directory / "preferences.ini")
@@ -78,14 +120,45 @@ class ConfigManager:
                 logger.warning("QSettings không khả dụng; sử dụng cấu hình JSON.")
 
     def load(self) -> Preferences:
-        """Load valid preferences; preserve damaged files for diagnosis."""
+        """Prefer the database, then the JSON mirror, then QSettings."""
+        stored = self._load_database()
+        if stored is not None:
+            return stored
+        legacy = self._load_json()
+        if legacy is not None:
+            self._import_legacy(legacy)
+            return legacy
+        return self._load_qsettings()
+
+    def _load_database(self) -> Preferences | None:
+        if self._store is None:
+            return None
+        try:
+            values = self._store.section(PREFERENCES_SECTION)
+            return _build_preferences(values) if values else None
+        except (ConfigError, ValueError, TypeError):
+            logger.warning(
+                "Cấu hình trong cơ sở dữ liệu không hợp lệ; thử bản sao JSON."
+            )
+            return None
+
+    def _load_json(self) -> Preferences | None:
         try:
             return _decode_preferences(self.json_path.read_text(encoding="utf-8"))
         except FileNotFoundError:
             logger.debug("Chưa có bản sao cấu hình JSON.")
         except (OSError, ValueError, TypeError):
             logger.warning("Không đọc được cấu hình JSON; thử bản sao QSettings.")
-        return self._load_qsettings()
+        return None
+
+    def _import_legacy(self, preferences: Preferences) -> None:
+        """Carry preferences written by an older version into the database."""
+        if self._store is None:
+            return
+        try:
+            self._store.set_many(PREFERENCES_SECTION, _encode_fields(preferences))
+        except (ConfigError, ValueError):
+            logger.warning("Không chuyển được cấu hình cũ vào cơ sở dữ liệu.")
 
     def _load_qsettings(self) -> Preferences:
         if self._settings is None:
@@ -109,7 +182,7 @@ class ConfigManager:
         if not isinstance(preferences, Preferences):
             raise TypeError("Cấu hình phải là đối tượng Preferences.")
         payload = json.dumps(asdict(preferences), ensure_ascii=False, indent=2)
-        self._save_json(payload)
+        self._save_database(preferences, payload)
         if self._settings is not None:
             try:
                 self._settings.setValue("preferences", payload)
@@ -118,6 +191,15 @@ class ConfigManager:
                     raise OSError("QSettings write failed.")
             except (OSError, RuntimeError):
                 logger.warning("Không ghi được QSettings; cấu hình đã lưu bằng JSON.")
+
+    def _save_database(self, preferences: Preferences, payload: str) -> None:
+        """Advance the database only once the JSON mirror is safely on disk."""
+        if self._store is None:
+            self._save_json(payload)
+            return
+        with self._store.transaction() as write:
+            write(PREFERENCES_SECTION, _encode_fields(preferences))
+            self._save_json(payload)
 
     def _save_json(self, payload: str) -> None:
         temporary: Path | None = None

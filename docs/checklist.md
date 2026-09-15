@@ -289,7 +289,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_find_replace.py -v`
   - **Files:** `src/gui/dialogs/find_replace.py`, `src/gui/components/comparison_dock.py`, `tests/gui/test_find_replace.py`
 
-- [ ] **Task 6.10: Kho cấu hình SQLite của ứng dụng (Application Settings Database)**
+- [x] **Task 6.10: Kho cấu hình SQLite của ứng dụng (Application Settings Database)**
   - **Mục tiêu:** Bổ sung `src/services/settings_store.py` dùng **SQLite** (thư viện chuẩn `sqlite3`) đặt trong thư mục ứng dụng để lưu cài đặt, tham số engine, lịch sử tệp và thông số phiên làm việc. `ConfigManager` đọc/ghi SQLite làm **nguồn chính**, vẫn xuất bản sao JSON để tương thích ngược và cho người dùng xem; tự nạp dữ liệu JSON cũ vào cơ sở dữ liệu ở lần chạy đầu.
   - **Acceptance:** Cài đặt lưu bền vững qua các lần khởi động; cấu hình JSON cũ được di chuyển sang SQLite không mất dữ liệu; ghi dữ liệu là giao dịch nguyên tử, hỏng tệp cơ sở dữ liệu vẫn không làm sập ứng dụng; câu lệnh SQL luôn tham số hóa.
   - **Verify:** `pytest -m unit tests/unit/test_settings_store.py -v`
