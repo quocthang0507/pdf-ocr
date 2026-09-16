@@ -4,7 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Callable, Mapping, Sequence
 from contextlib import ExitStack
+from dataclasses import dataclass
 from pathlib import Path
+from types import TracebackType
 
 import numpy as np
 import pymupdf
@@ -24,7 +26,7 @@ from src.core.preprocessor import (
     rotate_orientation,
 )
 from src.engines.base_engine import BaseOCREngine
-from src.engines.engine_registry import engine_session
+from src.engines.engine_registry import engine_session, release_accelerator_memory
 from src.services.weights_manager import ModelWeightsManager
 
 LoaderFactory = Callable[[str | Path], DocumentLoader]
@@ -38,6 +40,94 @@ def preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
     deskewed, _ = deskew_image(oriented)
     cropped = remove_borders(deskewed)
     return enhance_document_image(cropped)
+
+
+@dataclass
+class _OpenDocument:
+    """One document held open for a whole batch, with its page types cached."""
+
+    loader: DocumentLoader
+    pdf: pymupdf.Document | None
+    page_types: tuple[PageType, ...]
+
+
+class PageSession:
+    """Recognise pages one at a time while the models stay loaded.
+
+    Reloading a model for every page would dominate the run time, so the
+    session keeps engines and documents open and releases only the per-page
+    buffers and accelerator cache. Closing it unloads everything, even when
+    the caller failed part way through.
+    """
+
+    def __init__(
+        self,
+        service: PipelineService,
+        *,
+        engine_ids: tuple[str, ...],
+        device: str,
+        dpi: int,
+        engine_config: Mapping[str, object] | None,
+    ) -> None:
+        self._service = service
+        self._engine_ids = engine_ids
+        self._device = device
+        self._dpi = dpi
+        self._config = engine_config
+        self._stack = ExitStack()
+        self._engines: dict[str, BaseOCREngine] = {}
+        self._documents: dict[str, _OpenDocument] = {}
+
+    def __enter__(self) -> PageSession:
+        return self
+
+    def __exit__(
+        self,
+        exc_type: type[BaseException] | None,
+        exc: BaseException | None,
+        traceback: TracebackType | None,
+    ) -> None:
+        self.close()
+
+    def close(self) -> None:
+        """Unload every engine and document, then hand the memory back."""
+        self._documents.clear()
+        self._engines.clear()
+        self._stack.close()
+        release_accelerator_memory(self._device)
+
+    def page_count(self, file_path: str | Path) -> int:
+        return int(self._open(file_path).loader.page_count)
+
+    def recognise(self, file_path: str | Path, page_number: int) -> OCRPage:
+        """Recognise one page, freeing its working memory before returning."""
+        try:
+            document = self._open(file_path)
+            page = self._service.recognise_page(
+                document,
+                page_number,
+                self._engine_ids,
+                self._device,
+                self._dpi,
+                self._config,
+                self._stack,
+                self._engines,
+            )
+            return self._service.postprocessor.process_page(page)
+        except PDFOCRError:
+            raise
+        except Exception as error:
+            raise PDFOCRError("Không thể nhận diện trang tài liệu.") from error
+        finally:
+            release_accelerator_memory(self._device)
+
+    def _open(self, file_path: str | Path) -> _OpenDocument:
+        key = str(file_path)
+        document = self._documents.get(key)
+        if document is None:
+            document = self._service.open_document(file_path, self._stack)
+            self._documents[key] = document
+        return document
 
 
 class PipelineService:
@@ -59,6 +149,67 @@ class PipelineService:
         self._layout_analyzer = layout_analyzer or LayoutAnalyzer()
         self._postprocessor = postprocessor or Postprocessor()
         self._weights_manager = weights_manager
+
+    @property
+    def postprocessor(self) -> Postprocessor:
+        return self._postprocessor
+
+    def open_page_session(
+        self,
+        *,
+        engine_id: str = "vietocr",
+        fallback_engine_ids: Sequence[str] = (),
+        device: str = "cpu",
+        dpi: int = 300,
+        engine_config: Mapping[str, object] | None = None,
+    ) -> PageSession:
+        """Open a session that recognises pages individually for batch work."""
+        self._validate_options(engine_id, fallback_engine_ids, dpi)
+        return PageSession(
+            self,
+            engine_ids=(engine_id, *fallback_engine_ids),
+            device=device,
+            dpi=dpi,
+            engine_config=engine_config,
+        )
+
+    def open_document(self, file_path: str | Path, stack: ExitStack) -> _OpenDocument:
+        """Open a document once per batch and classify its pages up front."""
+        loader = stack.enter_context(self._loader_factory(file_path))
+        if not loader.is_pdf:
+            return _OpenDocument(loader, None, ())
+        pdf = stack.enter_context(pymupdf.open(str(loader.file_path)))
+        return _OpenDocument(
+            loader, pdf, tuple(self._classifier.classify_document(pdf))
+        )
+
+    def recognise_page(
+        self,
+        document: _OpenDocument,
+        page_number: int,
+        engine_ids: tuple[str, ...],
+        device: str,
+        dpi: int,
+        config: Mapping[str, object] | None,
+        stack: ExitStack,
+        engines: dict[str, BaseOCREngine],
+    ) -> OCRPage:
+        """Recognise one page, taking the text layer when the page already has one."""
+        if document.pdf is None:
+            loaded = document.loader.load_page(page_number, dpi)
+            return self._ocr_page(loaded, engine_ids, device, config, stack, engines)
+        page_type = document.page_types[page_number - 1]
+        index = page_number - 1
+        if page_type == PageType.TEXT_BASED:
+            return self._classifier.extract_page(document.pdf[index], page_number, dpi)
+        loaded = document.loader.load_page(page_number, dpi)
+        recognized = self._ocr_page(loaded, engine_ids, device, config, stack, engines)
+        if page_type == PageType.HYBRID:
+            direct = self._classifier.extract_page(
+                document.pdf[index], page_number, dpi
+            )
+            return self._merge_hybrid(direct, recognized)
+        return recognized.with_updates(page_type=PageType.SCANNED)
 
     def process(
         self,

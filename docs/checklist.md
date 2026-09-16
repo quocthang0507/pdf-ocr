@@ -323,7 +323,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_batch_dialog.py -v`
   - **Files:** `src/gui/dialogs/batch_dialog.py`, `src/gui/components/status_bar.py`, `tests/gui/test_batch_dialog.py`
 
-- [ ] **Task 7.3: Quản lý rò rỉ bộ nhớ & Thu hồi tài nguyên GPU (Memory Hygiene & engine_session)**
+- [x] **Task 7.3: Quản lý rò rỉ bộ nhớ & Thu hồi tài nguyên GPU (Memory Hygiene & engine_session)**
   - **Mục tiêu:** Kết nối với context manager `engine_session` để tự động thu hồi VRAM sau mỗi trang; kích hoạt garbage collection (`gc.collect()`) và giải phóng bộ nhớ đệm PyTorch (`torch.cuda.empty_cache()`).
   - **Acceptance:** Xử lý liên tục 100 trang PDF không làm tăng vọt mức tiêu thụ RAM/VRAM; không để sót dangling tensors trên GPU.
   - **Verify:** `pytest -m integration tests/integration/test_memory_leak.py -v`
