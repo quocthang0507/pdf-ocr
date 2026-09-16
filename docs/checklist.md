@@ -265,7 +265,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_table_editor.py -v`
   - **Files:** `src/gui/dialogs/table_editor.py`, `tests/gui/test_table_editor.py`
 
-- [ ] **Task 6.6: Hệ thống Theme giao diện hiện đại (Dark & Light Themes)**
+- [x] **Task 6.6: Hệ thống Theme giao diện hiện đại (Dark & Light Themes)**
   - **Mục tiêu:** Xây dựng `src/gui/styles/dark_theme.qss` và `light_theme.qss` với ngôn ngữ thiết kế hiện đại, chuyên nghiệp: bảng màu và thang khoảng cách nhất quán, bo góc tinh tế, trạng thái hover/focus/disabled rõ ràng, độ tương phản văn bản đạt chuẩn WCAG AA, chuyển đổi theme tức thì (Sáng / Tối / Theo hệ thống).
   - **Acceptance:** Giao diện hiển thị chuyên nghiệp, không lỗi vỡ style khi chuyển đổi giữa chế độ Dark và Light.
   - **Verify:** `pytest -m gui tests/gui/test_theme_manager.py -v`

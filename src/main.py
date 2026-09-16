@@ -6,8 +6,10 @@ import sys
 
 from PySide6.QtWidgets import QApplication, QMessageBox
 
+from src.config import ConfigManager
 from src.core.exceptions import PDFOCRError
 from src.gui.main_window import APPLICATION_NAME, ORGANIZATION_NAME, MainWindow
+from src.gui.styles.style_manager import StyleManager
 from src.services.weights_manager import ModelWeightsManager
 from src.utils.logger import configure_logging, logger
 
@@ -18,10 +20,19 @@ def main(argv: list[str] | None = None) -> int:
     application = QApplication(argv if argv is not None else sys.argv)
     application.setOrganizationName(ORGANIZATION_NAME)
     application.setApplicationName(APPLICATION_NAME)
+    _apply_saved_theme(application)
     window = MainWindow()
     _prepare_weights_storage(window)
     window.show()
     return application.exec()
+
+
+def _apply_saved_theme(application: QApplication) -> None:
+    """Paint the interface before the first window appears, never after."""
+    try:
+        StyleManager(application).apply(ConfigManager().load().theme)
+    except (PDFOCRError, ValueError, RuntimeError) as error:
+        logger.warning("Không áp dụng được giao diện đã lưu: {}", error)
 
 
 def _prepare_weights_storage(window: MainWindow) -> None:

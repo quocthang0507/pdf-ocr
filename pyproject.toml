@@ -28,6 +28,9 @@ ocr = [
     "easyocr>=1.7",
 ]
 
+[tool.setuptools.package-data]
+"src.gui.styles" = ["*.qss"]
+
 [tool.setuptools.packages.find]
 include = ["src", "src.*"]
 exclude = ["src.models", "src.models.*"]

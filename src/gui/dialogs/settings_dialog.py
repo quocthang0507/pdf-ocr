@@ -24,12 +24,19 @@ from PySide6.QtWidgets import (
 from src.config import ConfigManager, Preferences
 from src.core.exceptions import PDFOCRError
 from src.gui.components.settings_dock import populate_device_combo
+from src.gui.styles.style_manager import THEMES, StyleManager
 from src.services.device_service import detect_devices
 from src.services.weights_manager import ModelWeightsManager, migrate_weights
 from src.utils.file_utils import normalize_directory
 from src.utils.logger import logger
 
 _BYTES_PER_GB = 1024**3
+
+THEME_LABELS = {
+    "system": "Theo hệ thống",
+    "light": "Sáng",
+    "dark": "Tối",
+}
 
 
 class WeightsMigrationTask(QThread):
@@ -70,6 +77,7 @@ class SettingsDialog(QDialog):
     """Stateful settings editor; preferences are only written when accepted."""
 
     weights_directory_changed = Signal(str)
+    theme_changed = Signal(str)
     migration_finished = Signal(str)
     migration_failed = Signal(str)
 
@@ -89,6 +97,8 @@ class SettingsDialog(QDialog):
         self.free_space_label.setObjectName("free_space_label")
         self.device_combo = QComboBox(self)
         self.device_combo.setObjectName("device_combo")
+        self.theme_combo = QComboBox(self)
+        self.theme_combo.setObjectName("theme_combo")
         self.device_hint = QLabel(self)
         self.device_hint.setObjectName("device_hint")
         self.device_hint.setWordWrap(True)
@@ -120,6 +130,10 @@ class SettingsDialog(QDialog):
         execution_layout.addWidget(self.device_combo)
         execution_layout.addWidget(self.device_hint)
 
+        appearance = QGroupBox("Giao diện", self)
+        appearance_layout = QFormLayout(appearance)
+        appearance_layout.addRow("Chủ đề", self.theme_combo)
+
         folders = QGroupBox("Thư mục mặc định", self)
         folder_form = QFormLayout(folders)
         folder_form.addRow(
@@ -139,6 +153,7 @@ class SettingsDialog(QDialog):
         layout = QVBoxLayout(self)
         layout.addWidget(storage)
         layout.addWidget(execution)
+        layout.addWidget(appearance)
         layout.addWidget(folders)
         layout.addWidget(buttons)
 
@@ -146,6 +161,11 @@ class SettingsDialog(QDialog):
         populate_device_combo(self.device_combo)
         index = self.device_combo.findData(self._preferences.device)
         self.device_combo.setCurrentIndex(max(index, 0))
+        for theme in THEMES:
+            self.theme_combo.addItem(THEME_LABELS[theme], theme)
+        self.theme_combo.setCurrentIndex(
+            max(self.theme_combo.findData(self._preferences.theme), 0)
+        )
         self.device_hint.setText(_device_hint())
         self.weights_edit.setText(self._preferences.weights_dir or "")
         self.input_edit.setText(self._preferences.input_dir or "")
@@ -216,9 +236,19 @@ class SettingsDialog(QDialog):
             QMessageBox.warning(self, "Cài đặt", str(error))
             return
         self._preferences = preferences
+        self._apply_theme(preferences.theme)
         if preferences.weights_dir:
             self.weights_directory_changed.emit(preferences.weights_dir)
         super().accept()
+
+    def _apply_theme(self, theme: str) -> None:
+        """Repaint immediately so the choice is visible without a restart."""
+        try:
+            StyleManager().apply(theme)
+        except (RuntimeError, ValueError) as error:
+            logger.warning("Không đổi được giao diện: {}", error)
+            return
+        self.theme_changed.emit(theme)
 
     def _collect(self) -> Preferences:
         return Preferences(
@@ -226,7 +256,7 @@ class SettingsDialog(QDialog):
             input_dir=_checked_directory(self.input_edit.text()),
             output_dir=_checked_directory(self.output_edit.text()),
             device=str(self.device_combo.currentData()),
-            theme=self._preferences.theme,
+            theme=str(self.theme_combo.currentData()),
         )
 
     def closeEvent(self, event: object) -> None:  # noqa: N802 - Qt override
