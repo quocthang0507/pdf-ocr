@@ -11,6 +11,8 @@ from PySide6.QtCore import Signal
 from PySide6.QtGui import QAction, QKeySequence
 from PySide6.QtWidgets import QMenu, QMenuBar, QWidget
 
+from src.gui.i18n import translate_menu
+
 MAX_RECENT_FILES = 10
 SEPARATOR = "-"
 RECENT_FILES_SLOT = "@recent"
@@ -81,13 +83,23 @@ MENU_LAYOUT: tuple[tuple[str, tuple[str, ...]], ...] = (
 )
 
 
+def retranslate_actions(actions: Mapping[str, QAction]) -> None:
+    """Re-label existing commands after the interface language has changed."""
+    by_key = {spec.key: spec for spec in ACTION_SPECS}
+    for key, action in actions.items():
+        spec = by_key.get(key)
+        if spec is not None:
+            action.setText(translate_menu(spec.text))
+            action.setStatusTip(translate_menu(spec.status_tip))
+
+
 def create_actions(parent: QWidget) -> dict[str, QAction]:
     """Build every command once so menu bar and tool bar stay in lockstep."""
     actions: dict[str, QAction] = {}
     for spec in ACTION_SPECS:
-        action = QAction(spec.text, parent)
+        action = QAction(translate_menu(spec.text), parent)
         action.setObjectName(f"action_{spec.key}")
-        action.setStatusTip(spec.status_tip)
+        action.setStatusTip(translate_menu(spec.status_tip))
         action.setCheckable(spec.checkable)
         if spec.shortcut:
             action.setShortcut(QKeySequence(spec.shortcut))
@@ -101,7 +113,7 @@ class RecentFilesMenu(QMenu):
     file_selected = Signal(str)
 
     def __init__(self, parent: QWidget | None = None) -> None:
-        super().__init__("Tệp &gần đây", parent)
+        super().__init__(translate_menu("Tệp &gần đây"), parent)
         self.setObjectName("menu_recent_files")
         self.set_paths(())
 
@@ -128,7 +140,7 @@ class ApplicationMenuBar(QMenuBar):
         super().__init__(parent)
         self.setObjectName("main_menu_bar")
         for title, keys in MENU_LAYOUT:
-            menu = self.addMenu(title)
+            menu = self.addMenu(translate_menu(title))
             self._fill(menu, keys, actions, recent_files_menu)
 
     @staticmethod

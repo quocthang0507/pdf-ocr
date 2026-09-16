@@ -10,6 +10,7 @@ from dataclasses import asdict, dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from src.constants import DEFAULT_LANGUAGE, LANGUAGE_NAMES
 from src.core.exceptions import ConfigError
 from src.services.settings_store import (
     DATABASE_NAME,
@@ -32,12 +33,15 @@ class Preferences:
     output_dir: str | None = None
     device: str = "auto"
     theme: str = "system"
+    language: str = DEFAULT_LANGUAGE
 
     def __post_init__(self) -> None:
         if self.device not in ("auto", "cpu", "cuda"):
             raise ValueError("Thiết bị phải là auto, cpu hoặc cuda.")
         if self.theme not in ("system", "light", "dark"):
             raise ValueError("Giao diện phải là system, light hoặc dark.")
+        if self.language not in LANGUAGE_NAMES:
+            raise ValueError("Ngôn ngữ giao diện không được hỗ trợ.")
         for path in (self.weights_dir, self.input_dir, self.output_dir):
             if path is not None and (
                 not isinstance(path, str) or not path.strip() or "\x00" in path
@@ -75,6 +79,7 @@ def _build_preferences(values: Mapping[str, str]) -> Preferences:
         output_dir=fields.get("output_dir"),
         device=fields.get("device") or "auto",
         theme=fields.get("theme") or "system",
+        language=fields.get("language") or DEFAULT_LANGUAGE,
     )
 
 

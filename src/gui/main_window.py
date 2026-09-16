@@ -23,14 +23,17 @@ from src.core.models import BoundingBox
 from src.gui.components.comparison_dock import ComparisonDock
 from src.gui.components.menu_bar import (
     MAX_RECENT_FILES,
+    MENU_LAYOUT,
     ApplicationMenuBar,
     RecentFilesMenu,
     create_actions,
+    retranslate_actions,
 )
 from src.gui.components.notifications import NotificationCenter, Severity
 from src.gui.components.settings_dock import SettingsDock
 from src.gui.components.tool_bar import ApplicationToolBar
 from src.gui.dialogs.settings_dialog import SettingsDialog
+from src.gui.i18n import translate_menu
 from src.utils.logger import logger
 
 ORGANIZATION_NAME = "PDF OCR"
@@ -248,6 +251,15 @@ class MainWindow(QMainWindow):
         if selected:
             self.open_folder(selected)
 
+    def retranslate(self) -> None:
+        """Re-label the shell after the interface language has changed."""
+        retranslate_actions(self.command_actions)
+        self.recent_files_menu.setTitle(translate_menu("Tệp &gần đây"))
+        for menu, (title, _keys) in zip(
+            self.menuBar().actions(), MENU_LAYOUT, strict=True
+        ):
+            menu.setText(translate_menu(title))
+
     def open_find_replace(self) -> None:
         """Open the bulk-correction panel for the transcript."""
         self.comparison.open_find_replace()
@@ -314,6 +326,7 @@ class MainWindow(QMainWindow):
         """Show the settings dialog and apply the new weights folder at once."""
         dialog = SettingsDialog(parent=self)
         dialog.weights_directory_changed.connect(self._apply_weights_directory)
+        dialog.language_changed.connect(lambda _code: self.retranslate())
         dialog.exec()
 
     def _apply_weights_directory(self, directory: str) -> None:

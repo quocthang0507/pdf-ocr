@@ -30,6 +30,7 @@ ocr = [
 
 [tool.setuptools.package-data]
 "src.gui.styles" = ["*.qss"]
+"src.gui.translations" = ["*.qm"]
 
 [tool.setuptools.packages.find]
 include = ["src", "src.*"]

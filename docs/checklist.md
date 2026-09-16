@@ -301,7 +301,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_notifications.py -v`
   - **Files:** `src/gui/components/notifications.py`, `src/gui/main_window.py`, `tests/gui/test_notifications.py`
 
-- [ ] **Task 6.12: Đa ngôn ngữ giao diện Việt - Anh (Interface Localization)**
+- [x] **Task 6.12: Đa ngôn ngữ giao diện Việt - Anh (Interface Localization)**
   - **Mục tiêu:** Cài đặt `src/gui/i18n.py` quản lý `QTranslator`, bảng ngôn ngữ khả dụng và ngôn ngữ mặc định (tiếng Việt). Đưa chuỗi hiển thị của giao diện qua cơ chế dịch, bổ sung mục chọn ngôn ngữ trong Hộp thoại Cài đặt và lưu lựa chọn vào kho cấu hình.
   - **Acceptance:** Đổi ngôn ngữ trong Cài đặt áp dụng ngay cho giao diện đang mở; khởi động lại vẫn giữ đúng ngôn ngữ đã chọn; thiếu tệp dịch thì lùi về tiếng Việt thay vì báo lỗi.
   - **Verify:** `pytest -m gui tests/gui/test_i18n.py -v`

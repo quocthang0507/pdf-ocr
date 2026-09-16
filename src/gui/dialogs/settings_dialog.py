@@ -24,6 +24,7 @@ from PySide6.QtWidgets import (
 from src.config import ConfigManager, Preferences
 from src.core.exceptions import PDFOCRError
 from src.gui.components.settings_dock import populate_device_combo
+from src.gui.i18n import LANGUAGE_NAMES, TranslationManager
 from src.gui.styles.style_manager import THEMES, StyleManager
 from src.services.device_service import detect_devices
 from src.services.weights_manager import ModelWeightsManager, migrate_weights
@@ -78,6 +79,7 @@ class SettingsDialog(QDialog):
 
     weights_directory_changed = Signal(str)
     theme_changed = Signal(str)
+    language_changed = Signal(str)
     migration_finished = Signal(str)
     migration_failed = Signal(str)
 
@@ -99,6 +101,8 @@ class SettingsDialog(QDialog):
         self.device_combo.setObjectName("device_combo")
         self.theme_combo = QComboBox(self)
         self.theme_combo.setObjectName("theme_combo")
+        self.language_combo = QComboBox(self)
+        self.language_combo.setObjectName("language_combo")
         self.device_hint = QLabel(self)
         self.device_hint.setObjectName("device_hint")
         self.device_hint.setWordWrap(True)
@@ -133,6 +137,7 @@ class SettingsDialog(QDialog):
         appearance = QGroupBox("Giao diện", self)
         appearance_layout = QFormLayout(appearance)
         appearance_layout.addRow("Chủ đề", self.theme_combo)
+        appearance_layout.addRow("Ngôn ngữ", self.language_combo)
 
         folders = QGroupBox("Thư mục mặc định", self)
         folder_form = QFormLayout(folders)
@@ -165,6 +170,11 @@ class SettingsDialog(QDialog):
             self.theme_combo.addItem(THEME_LABELS[theme], theme)
         self.theme_combo.setCurrentIndex(
             max(self.theme_combo.findData(self._preferences.theme), 0)
+        )
+        for code, name in LANGUAGE_NAMES.items():
+            self.language_combo.addItem(name, code)
+        self.language_combo.setCurrentIndex(
+            max(self.language_combo.findData(self._preferences.language), 0)
         )
         self.device_hint.setText(_device_hint())
         self.weights_edit.setText(self._preferences.weights_dir or "")
@@ -237,6 +247,7 @@ class SettingsDialog(QDialog):
             return
         self._preferences = preferences
         self._apply_theme(preferences.theme)
+        self._apply_language(preferences.language)
         if preferences.weights_dir:
             self.weights_directory_changed.emit(preferences.weights_dir)
         super().accept()
@@ -250,6 +261,15 @@ class SettingsDialog(QDialog):
             return
         self.theme_changed.emit(theme)
 
+    def _apply_language(self, language: str) -> None:
+        """Install the chosen catalogue so the change needs no restart."""
+        try:
+            TranslationManager().apply(language)
+        except (RuntimeError, ValueError) as error:
+            logger.warning("Không đổi được ngôn ngữ: {}", error)
+            return
+        self.language_changed.emit(language)
+
     def _collect(self) -> Preferences:
         return Preferences(
             weights_dir=_checked_directory(self.weights_edit.text(), create=True),
@@ -257,6 +277,7 @@ class SettingsDialog(QDialog):
             output_dir=_checked_directory(self.output_edit.text()),
             device=str(self.device_combo.currentData()),
             theme=str(self.theme_combo.currentData()),
+            language=str(self.language_combo.currentData()),
         )
 
     def closeEvent(self, event: object) -> None:  # noqa: N802 - Qt override

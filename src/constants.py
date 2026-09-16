@@ -31,3 +31,10 @@ LOW_CONFIDENCE_COLOR = "#fde68a"
 
 #: Outline colour of the block or region the user is currently working on.
 SELECTION_COLOR = "#dc2626"
+
+#: Interface languages, keyed by code; Vietnamese is the source language.
+DEFAULT_LANGUAGE = "vi"
+LANGUAGE_NAMES: dict[str, str] = {
+    "vi": "Tiếng Việt",
+    "en": "English",
+}
