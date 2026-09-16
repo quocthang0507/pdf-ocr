@@ -333,7 +333,7 @@
 
 ### Giai Đoạn 8: Kiểm Thử Toàn Trình, Đóng Gói & Nghiệm Thu (E2E Verification & Release)
 
-- [ ] **Task 8.1: Xây dựng bộ dữ liệu mẫu kiểm nghiệm (Test Fixtures & E2E Suite)**
+- [x] **Task 8.1: Xây dựng bộ dữ liệu mẫu kiểm nghiệm (Test Fixtures & E2E Suite)**
   - **Mục tiêu:** Thu thập các tài liệu mẫu thực tế: PDF scan tiếng Việt có dấu, tài liệu nhiều cột báo, bảng biểu hóa đơn, ảnh chữ viết tay, ảnh bị xoay nghiêng/bóng đổ.
   - **Acceptance:** Bộ kiểm thử E2E chạy tự động trên toàn bộ các mẫu fixture và kiểm tra đầu ra cho tất cả các định dạng xuất.
   - **Verify:** `pytest -m integration tests/integration/test_e2e.py -v`
