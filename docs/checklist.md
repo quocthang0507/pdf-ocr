@@ -357,7 +357,7 @@
   - **Verify:** `pyinstaller packaging/pdf-ocr.spec --noconfirm`
   - **Files:** `packaging/pdf-ocr.spec`, `packaging/build_portable.py`, `src/services/weights_manager.py`
 
-- [ ] **Task 8.5: Kiểm định Quy trình Git & Chuẩn bị Phát hành (Git Workflow & Release Preparation)**
+- [x] **Task 8.5: Kiểm định Quy trình Git & Chuẩn bị Phát hành (Git Workflow & Release Preparation)**
   - **Mục tiêu:** Rà soát toàn bộ lịch sử commit tuân thủ Conventional Commits (`feat`, `fix`, `refactor`, `docs`, `test`, `chore`, `perf`), chuẩn bị PR hoàn chỉnh kèm test plan và release notes.
   - **Acceptance:** 100% commit messages tuân thủ định dạng; không có commit trực tiếp vào `main`; toàn bộ test và linters đều xanh trên CI/local.
   - **Verify:** `git log --oneline -n 20`
