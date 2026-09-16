@@ -4,9 +4,10 @@ from __future__ import annotations
 
 from enum import Enum
 
-from PySide6.QtCore import QEvent, QObject, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
+    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -86,15 +87,47 @@ class Toast(QFrame):
         self.setFixedWidth(TOAST_WIDTH)
         self.adjustSize()
 
+    def _is_dark(self) -> bool:
+        application = QApplication.instance()
+        if isinstance(application, QApplication):
+            scheme = application.styleHints().colorScheme()
+            if scheme == Qt.ColorScheme.Dark:
+                return True
+        bg = self.palette().color(self.backgroundRole())
+        return bg.lightness() < 128
+
     def _apply_style(self) -> None:
         accent = self.accent_color().name()
+        if self._is_dark():
+            bg = "#1a212b"
+            fg = "#e6ebf2"
+            close_fg = "#9aa6b8"
+            close_hover_bg = "#232c38"
+            border = "#2c3644"
+        else:
+            bg = "#ffffff"
+            fg = "#16202e"
+            close_fg = "#5a6474"
+            close_hover_bg = "#eef1f6"
+            border = "#d8dee7"
+
         self.setStyleSheet(
             f"#{self.objectName()} {{"
-            f" background-color: palette(base);"
-            f" border: 1px solid {accent};"
+            f" background-color: {bg};"
+            f" border: 1px solid {border};"
             f" border-left: 4px solid {accent};"
             f" border-radius: 8px; }}"
-            f" #toast_icon {{ color: {accent}; font-weight: 700; }}"
+            f" #toast_icon {{"
+            f" color: {accent}; font-weight: 700; font-size: 14px;"
+            f" background: transparent; }}"
+            f" #toast_message {{"
+            f" color: {fg}; font-size: 13px; background: transparent; }}"
+            f" #toast_close {{"
+            f" background: transparent; border: none; color: {close_fg};"
+            f" font-size: 13px; font-weight: bold; border-radius: 4px;"
+            f" padding: 2px; }}"
+            f" #toast_close:hover {{"
+            f" background-color: {close_hover_bg}; color: {fg}; }}"
         )
 
     def accent_color(self) -> QColor:

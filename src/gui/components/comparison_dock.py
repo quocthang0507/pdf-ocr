@@ -7,12 +7,17 @@ from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import partial
 
+import re
+
 import numpy as np
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QShortcut, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
+    QHBoxLayout,
     QLabel,
+    QPushButton,
     QSplitter,
+    QStyle,
     QTextEdit,
     QVBoxLayout,
     QWidget,
@@ -57,13 +62,34 @@ def _render(page: OCRPage) -> tuple[str, tuple[TextSpan, ...], tuple[TextSpan, .
     return "".join(parts), tuple(blocks), tuple(uncertain)
 
 
+_LIST_MARKER_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
+
+
+def _should_break_line(prev_text: str, curr_text: str) -> bool:
+    if prev_text.endswith(":"):
+        return True
+    if bool(_LIST_MARKER_REGEX.match(curr_text)):
+        return True
+    return False
+
+
 def _render_block_lines(
     block: OCRBlock, parts: list[str], cursor: int, uncertain: list[TextSpan]
 ) -> int:
     for line_index, line in enumerate(block.lines):
         if line_index:
-            parts.append("\n")
-            cursor += 1
+            prev_line = block.lines[line_index - 1]
+            prev_text = prev_line.text.rstrip()
+            curr_text = line.text.lstrip()
+            if _should_break_line(prev_text, curr_text):
+                parts.append("\n")
+                cursor += 1
+            elif prev_text.endswith("-") and not prev_text.endswith(" -"):
+                # Nối từ bị ngắt bởi dấu gạch ngang cuối dòng (de-hyphenation)
+                pass
+            else:
+                parts.append(" ")
+                cursor += 1
         for word_index, word in enumerate(line.words):
             if word_index:
                 parts.append(" ")
@@ -82,6 +108,7 @@ class ComparisonDock(QWidget):
     re-entrance guard to keep a click from bouncing back and forth.
     """
 
+    page_change_requested = Signal(int)
     transcript_edited = Signal(str)
     table_edited = Signal(int, OCRTable)
     region_ocr_requested = Signal(BoundingBox)
@@ -102,6 +129,29 @@ class ComparisonDock(QWidget):
         self.region_label.hide()
         self._block_spans: tuple[TextSpan, ...] = ()
         self._page: OCRPage | None = None
+        self._current_page = 0
+        self._total_pages = 0
+        self.prev_page_btn = QPushButton(self)
+        self.prev_page_btn.setObjectName("prev_page_button")
+        self.prev_page_btn.setToolTip("Trang trước")
+        icon_left = self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowLeft)
+        if not icon_left.isNull():
+            self.prev_page_btn.setIcon(icon_left)
+        else:
+            self.prev_page_btn.setText("◀")
+        self.prev_page_btn.setEnabled(False)
+        self.page_label = QLabel("Trang 0 / 0", self)
+        self.page_label.setObjectName("page_indicator")
+        self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.next_page_btn = QPushButton(self)
+        self.next_page_btn.setObjectName("next_page_button")
+        self.next_page_btn.setToolTip("Trang sau")
+        icon_right = self.style().standardIcon(QStyle.StandardPixmap.SP_ArrowRight)
+        if not icon_right.isNull():
+            self.next_page_btn.setIcon(icon_right)
+        else:
+            self.next_page_btn.setText("▶")
+        self.next_page_btn.setEnabled(False)
         self.table_editor: TableEditorDialog | None = None
         self.find_replace_dialog: FindReplaceDialog | None = None
         self._syncing = False
@@ -112,16 +162,36 @@ class ComparisonDock(QWidget):
         self.canvas.region_selected.connect(self.region_ocr_requested)
         self.editor.cursorPositionChanged.connect(self._focus_canvas_block)
         self.editor.textChanged.connect(self._publish_transcript)
+        self.prev_page_btn.clicked.connect(self._prev_page)
+        self.next_page_btn.clicked.connect(self._next_page)
 
     def _build_layout(self) -> None:
+        canvas_pane = QWidget(self)
+        canvas_layout = QVBoxLayout(canvas_pane)
+        canvas_layout.setContentsMargins(0, 0, 0, 0)
+        canvas_layout.setSpacing(4)
+        canvas_layout.addWidget(self.canvas, 1)
+
+        nav_bar = QWidget(canvas_pane)
+        nav_layout = QHBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(4, 2, 4, 4)
+        nav_layout.setSpacing(8)
+        nav_layout.addStretch(1)
+        nav_layout.addWidget(self.prev_page_btn)
+        nav_layout.addWidget(self.page_label)
+        nav_layout.addWidget(self.next_page_btn)
+        nav_layout.addStretch(1)
+        canvas_layout.addWidget(nav_bar)
+
         text_pane = QWidget(self)
         text_layout = QVBoxLayout(text_pane)
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.addWidget(self.editor)
         text_layout.addWidget(self.region_label)
+
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.setObjectName("comparison_splitter")
-        splitter.addWidget(self.canvas)
+        splitter.addWidget(canvas_pane)
         splitter.addWidget(text_pane)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
@@ -151,7 +221,46 @@ class ComparisonDock(QWidget):
     def editor_shortcuts(self) -> tuple[QShortcut, ...]:
         return self._shortcuts
 
+    # -- page navigation --------------------------------------------------
+
+    def _prev_page(self) -> None:
+        if self._current_page > 1:
+            self.page_change_requested.emit(self._current_page - 1)
+
+    def _next_page(self) -> None:
+        if self._current_page < self._total_pages:
+            self.page_change_requested.emit(self._current_page + 1)
+
+    def set_page_info(self, current: int, total: int) -> None:
+        """Update current page number, total pages and button availability."""
+        self._current_page = max(0, current)
+        self._total_pages = max(0, total)
+        if self._total_pages > 0:
+            self.page_label.setText(f"Trang {self._current_page} / {self._total_pages}")
+        else:
+            self.page_label.setText("Trang 0 / 0")
+        self.prev_page_btn.setEnabled(self._current_page > 1)
+        self.next_page_btn.setEnabled(self._current_page < self._total_pages)
+
+    def current_page(self) -> int:
+        return self._current_page
+
+    def total_pages(self) -> int:
+        return self._total_pages
+
     # -- content ----------------------------------------------------------
+
+    def set_image(self, image: np.ndarray, text: str = "") -> None:
+        """Display an unrecognised page image, optionally with extracted native text."""
+        if not isinstance(image, np.ndarray):
+            raise TypeError("Dữ liệu hình ảnh phải là đối tượng numpy.ndarray.")
+        self._block_spans = ()
+        self._page = None
+        self.canvas.set_image(image)
+        with self._suspend_sync():
+            self.editor.setPlainText(text)
+            self.editor.setExtraSelections([])
+        self.region_label.hide()
 
     def set_page(self, page: OCRPage, image: np.ndarray) -> None:
         """Show one recognised page beside the image it was recognised from."""
@@ -172,6 +281,7 @@ class ComparisonDock(QWidget):
         self._block_spans = ()
         self._page = None
         self.table_editor = None
+        self.set_page_info(0, 0)
         self.canvas.clear_page()
         with self._suspend_sync():
             self.editor.clear()

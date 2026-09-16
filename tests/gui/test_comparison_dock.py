@@ -195,3 +195,61 @@ def test_zoom_requests_are_forwarded_to_the_canvas(dock: ComparisonDock) -> None
     dock.apply_zoom(1)
 
     assert dock.canvas.zoom_factor() > fitted
+
+
+def test_set_image_displays_page_without_blocks(dock: ComparisonDock) -> None:
+    img = _image(500, 700)
+    dock.set_image(img, text="Văn bản gốc trích xuất")
+
+    assert dock.canvas.page_size().width() == 500
+    assert dock.canvas.block_items() == []
+    assert dock.transcript() == "Văn bản gốc trích xuất"
+
+
+def test_page_navigation_controls(dock: ComparisonDock, qtbot) -> None:
+    dock.set_page_info(current=1, total=3)
+
+    assert dock.current_page() == 1
+    assert dock.total_pages() == 3
+    assert dock.page_label.text() == "Trang 1 / 3"
+    assert dock.prev_page_btn.isEnabled() is False
+    assert dock.next_page_btn.isEnabled() is True
+
+    with qtbot.waitSignal(dock.page_change_requested) as blocker:
+        dock.next_page_btn.click()
+
+    assert blocker.args == [2]
+
+    dock.set_page_info(current=2, total=3)
+    assert dock.prev_page_btn.isEnabled() is True
+    assert dock.next_page_btn.isEnabled() is True
+
+    with qtbot.waitSignal(dock.page_change_requested) as blocker:
+        dock.prev_page_btn.click()
+
+    assert blocker.args == [1]
+
+
+def test_page_navigation_buttons_have_icons_and_tooltips(
+    dock: ComparisonDock,
+) -> None:
+    assert not dock.prev_page_btn.icon().isNull() or bool(dock.prev_page_btn.text())
+    assert not dock.next_page_btn.icon().isNull() or bool(dock.next_page_btn.text())
+    assert dock.prev_page_btn.toolTip() == "Trang trước"
+    assert dock.next_page_btn.toolTip() == "Trang sau"
+
+
+def test_render_joins_paragraph_lines_smoothly(dock: ComparisonDock) -> None:
+    word1 = OCRWord("Dòng", BoundingBox(20, 20, 80, 40))
+    word2 = OCRWord("thứ", BoundingBox(90, 20, 140, 40))
+    line1 = _line((word1, word2), (20, 20, 140, 40))
+    word3 = OCRWord("nhất", BoundingBox(20, 45, 80, 65))
+    word4 = OCRWord("tiếp", BoundingBox(90, 45, 140, 65))
+    line2 = _line((word3, word4), (20, 45, 140, 65))
+    block = OCRBlock(lines=(line1, line2), bbox=BoundingBox(20, 20, 140, 65))
+    page = OCRPage(page_number=1, width=400, height=400, blocks=(block,))
+
+    dock.set_page(page, _image(400, 400))
+    assert dock.transcript() == "Dòng thứ nhất tiếp"
+
+

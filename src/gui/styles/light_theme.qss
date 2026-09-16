@@ -374,3 +374,66 @@ QToolTip {
     color: #ffffff;
     padding: 6px 9px;
 }
+
+/* Toast notifications */
+QFrame[objectName^="toast_"] {
+    background-color: #ffffff;
+    border: 1px solid #d8dee7;
+    border-radius: 8px;
+}
+
+QLabel#toast_icon {
+    background-color: transparent;
+    font-size: 14px;
+    font-weight: 700;
+}
+
+QLabel#toast_message {
+    background-color: transparent;
+    color: #16202e;
+    font-size: 13px;
+}
+
+QPushButton#toast_close {
+    background-color: transparent;
+    border: none;
+    border-radius: 4px;
+    color: #5a6474;
+    font-size: 13px;
+    font-weight: bold;
+    padding: 2px;
+}
+
+QPushButton#toast_close:hover {
+    background-color: #eef1f6;
+    color: #16202e;
+}
+
+/* Page navigation bar */
+QLabel#page_indicator {
+    background-color: transparent;
+    color: #5a6474;
+    font-size: 13px;
+    font-weight: 500;
+    padding: 2px 8px;
+}
+
+QPushButton#prev_page_button,
+QPushButton#next_page_button {
+    min-width: 32px;
+    max-width: 32px;
+    min-height: 28px;
+    max-height: 28px;
+    padding: 2px 4px;
+    font-size: 13px;
+    font-weight: bold;
+}
+
+QPushButton#prev_page_button:disabled,
+QPushButton#next_page_button:disabled {
+    background-color: #f2f4f7;
+    border-color: #e4e9f0;
+    color: #98a2b3;
+    opacity: 0.6;
+}
+

@@ -113,3 +113,67 @@ def test_analyze_returns_immutable_page_with_sorted_blocks() -> None:
     assert analyzed.page_type == PageType.SCANNED
     assert analyzed.dpi == 200
     assert all(block.block_type == BlockType.TEXT for block in analyzed.blocks)
+
+
+@pytest.mark.unit
+def test_merge_paragraphs_combines_consecutive_lines_in_same_column() -> None:
+    blocks = (
+        _block("Thị trường lao động quý III ghi nhận", (50, 60, 400, 80)),
+        _block("mức tăng trưởng ổn định ở nhiều ngành nghề.", (50, 85, 400, 105)),
+        _block("Số lượng việc làm tăng cao.", (50, 110, 300, 130)),
+    )
+    analyzer = LayoutAnalyzer()
+    merged = analyzer.merge_paragraphs(blocks)
+
+    assert len(merged) == 1
+    assert len(merged[0].lines) == 3
+    assert merged[0].text == (
+        "Thị trường lao động quý III ghi nhận mức tăng trưởng ổn định ở nhiều ngành nghề. "
+        "Số lượng việc làm tăng cao."
+    )
+
+
+@pytest.mark.unit
+def test_merge_paragraphs_keeps_separate_columns_distinct() -> None:
+    blocks = (
+        _block("Cột 1 dòng 1", (50, 60, 250, 80)),
+        _block("Cột 1 dòng 2", (50, 85, 250, 105)),
+        _block("Cột 2 dòng 1", (320, 60, 520, 80)),
+        _block("Cột 2 dòng 2", (320, 85, 520, 105)),
+    )
+    analyzer = LayoutAnalyzer()
+    merged = analyzer.merge_paragraphs(blocks)
+
+    assert len(merged) == 2
+    assert merged[0].text == "Cột 1 dòng 1 Cột 1 dòng 2"
+    assert merged[1].text == "Cột 2 dòng 1 Cột 2 dòng 2"
+
+
+@pytest.mark.unit
+def test_merge_paragraphs_respects_list_items_and_colons() -> None:
+    blocks = (
+        _block("Hồ sơ yêu cầu gồm:", (50, 60, 300, 80)),
+        _block("1. Bản sao công chứng giấy phép kinh doanh", (50, 85, 450, 105)),
+        _block("2. Đơn đăng ký theo mẫu quy định", (50, 110, 450, 130)),
+    )
+    analyzer = LayoutAnalyzer()
+    merged = analyzer.merge_paragraphs(blocks)
+
+    assert len(merged) == 3
+    assert merged[0].text == "Hồ sơ yêu cầu gồm:"
+    assert merged[1].text == "1. Bản sao công chứng giấy phép kinh doanh"
+    assert merged[2].text == "2. Đơn đăng ký theo mẫu quy định"
+
+
+@pytest.mark.unit
+def test_merge_paragraphs_handles_hyphenation_at_line_end() -> None:
+    blocks = (
+        _block("Hệ thống nhận-", (50, 60, 300, 80)),
+        _block("diện văn bản tự động.", (50, 85, 300, 105)),
+    )
+    analyzer = LayoutAnalyzer()
+    merged = analyzer.merge_paragraphs(blocks)
+
+    assert len(merged) == 1
+    assert merged[0].text == "Hệ thống nhận-diện văn bản tự động."
+

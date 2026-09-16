@@ -1,10 +1,10 @@
-"""Geometry-only XY-Cut reading order analysis for OCR blocks."""
-
-from __future__ import annotations
-
+import re
 from collections.abc import Sequence
 
-from src.core.models import OCRBlock, OCRPage
+from src.constants import BlockType
+from src.core.models import BoundingBox, OCRBlock, OCRPage
+
+_LIST_MARKER_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
 
 
 class LayoutAnalyzer:
@@ -15,11 +15,105 @@ class LayoutAnalyzer:
             raise ValueError("Khoảng trắng tối thiểu không được âm.")
         self._minimum_gap = float(minimum_gap)
 
-    def analyze(self, page: OCRPage) -> OCRPage:
+    def analyze(self, page: OCRPage, merge_paragraphs: bool = True) -> OCRPage:
         """Return a new page whose blocks carry a contiguous reading order."""
         if not isinstance(page, OCRPage):
             raise TypeError("page phải là đối tượng OCRPage.")
-        return page.with_updates(blocks=self.sort_blocks(page.blocks))
+        sorted_blocks = self.sort_blocks(page.blocks)
+        if merge_paragraphs:
+            sorted_blocks = self.merge_paragraphs(sorted_blocks)
+        return page.with_updates(blocks=sorted_blocks)
+
+    def merge_paragraphs(
+        self, blocks: Sequence[OCRBlock]
+    ) -> tuple[OCRBlock, ...]:
+        """Group consecutive lines in reading order into paragraph blocks."""
+        if any(not isinstance(block, OCRBlock) for block in blocks):
+            raise TypeError("blocks chỉ được chứa đối tượng OCRBlock.")
+        if len(blocks) < 2:
+            return tuple(blocks)
+
+        merged: list[OCRBlock] = []
+        current = blocks[0]
+
+        for next_block in blocks[1:]:
+            if self._should_merge_blocks(current, next_block):
+                current = self._combine_blocks(current, next_block)
+            else:
+                merged.append(current)
+                current = next_block
+        merged.append(current)
+
+        return tuple(
+            block.with_updates(reading_order=order)
+            for order, block in enumerate(merged)
+        )
+
+    def _should_merge_blocks(
+        self, current: OCRBlock, candidate: OCRBlock
+    ) -> bool:
+        if (
+            current.block_type != BlockType.TEXT
+            or candidate.block_type != BlockType.TEXT
+        ):
+            return False
+
+        b1 = current.lines[-1].bbox if current.lines else current.bbox
+        b2 = candidate.lines[0].bbox if candidate.lines else candidate.bbox
+
+        if b2.y1 < b1.y1 - 4.0:
+            return False
+
+        gap = b2.y1 - b1.y2
+        line_height = max((b1.height + b2.height) / 2.0, 1.0)
+
+        if gap > 1.8 * line_height or gap < -0.6 * line_height:
+            return False
+
+        overlap_x = min(b1.x2, b2.x2) - max(b1.x1, b2.x1)
+        min_width = min(b1.width, b2.width)
+        if min_width > 0 and (overlap_x / min_width) < 0.25:
+            return False
+
+        if abs(b1.x1 - b2.x1) > max(b1.width, b2.width) * 0.45:
+            return False
+
+        prev_text = current.lines[-1].text.strip() if current.lines else ""
+        next_text = candidate.lines[0].text.strip() if candidate.lines else ""
+
+        if not prev_text or not next_text:
+            return False
+
+        if bool(_LIST_MARKER_REGEX.match(next_text)):
+            return False
+
+        if prev_text.endswith(":"):
+            return False
+
+        if prev_text.endswith("-") and not prev_text.endswith(" -"):
+            return True
+
+        if prev_text.endswith((".", "!", "?", "...", "…”", ".\"")):
+            col_width = max(current.bbox.width, candidate.bbox.width)
+            if col_width > 0 and b1.width < 0.65 * col_width:
+                return False
+            if gap > 1.2 * line_height:
+                return False
+
+        return True
+
+    @staticmethod
+    def _combine_blocks(b1: OCRBlock, b2: OCRBlock) -> OCRBlock:
+        combined_box = BoundingBox(
+            min(b1.bbox.x1, b2.bbox.x1),
+            min(b1.bbox.y1, b2.bbox.y1),
+            max(b1.bbox.x2, b2.bbox.x2),
+            max(b1.bbox.y2, b2.bbox.y2),
+        )
+        return b1.with_updates(
+            lines=b1.lines + b2.lines,
+            bbox=combined_box,
+        )
 
     def sort_blocks(self, blocks: Sequence[OCRBlock]) -> tuple[OCRBlock, ...]:
         """Apply recursive XY-Cut, preferring column cuts over row cuts."""

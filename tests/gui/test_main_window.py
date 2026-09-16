@@ -251,3 +251,102 @@ def test_window_layout_survives_a_restart(qtbot, settings: QSettings) -> None:
     qtbot.addWidget(second)
 
     assert second.size() == first.size()
+
+
+def test_opening_a_valid_pdf_renders_it_on_canvas(
+    window: MainWindow, qtbot, tmp_path: Path
+) -> None:
+    import pymupdf
+
+    doc = pymupdf.open()
+    page1 = doc.new_page(width=300, height=400)
+    page1.insert_text((50, 50), "Trang 1")
+    page2 = doc.new_page(width=300, height=400)
+    page2.insert_text((50, 50), "Trang 2")
+    pdf_path = tmp_path / "tai-lieu.pdf"
+    pdf_path.write_bytes(doc.tobytes())
+    doc.close()
+
+    with qtbot.waitSignal(window.document_opened):
+        window.open_path(pdf_path)
+
+    assert window.comparison.total_pages() == 2
+    assert window.comparison.current_page() == 1
+    assert window.comparison.page_label.text() == "Trang 1 / 2"
+    assert window.comparison.canvas.page_size().width() > 0
+    assert "Trang 1" in window.comparison.transcript()
+
+    # Flip to page 2
+    window.comparison.next_page_btn.click()
+    assert window.comparison.current_page() == 2
+    assert window.comparison.page_label.text() == "Trang 2 / 2"
+    assert "Trang 2" in window.comparison.transcript()
+
+
+def test_page_recognition_updates_current_comparison_dock(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    import pymupdf
+
+    from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRWord
+    from src.workers.signals import PageTask
+
+    doc = pymupdf.open()
+    doc.new_page(width=300, height=400)
+    pdf_path = tmp_path / "single.pdf"
+    pdf_path.write_bytes(doc.tobytes())
+    doc.close()
+
+    window.open_path(pdf_path)
+
+    word = OCRWord("Recognised", BoundingBox(10, 10, 80, 40), 0.99)
+    line = OCRLine(words=(word,), bbox=BoundingBox(10, 10, 80, 40))
+    block = OCRBlock(lines=(line,), bbox=BoundingBox(10, 10, 80, 40))
+    page = OCRPage(page_number=1, width=300, height=400, blocks=(block,))
+
+    task = PageTask(document_path=str(pdf_path.resolve()), page_number=1)
+    window._on_page_recognised(task, page)
+
+    assert "Recognised" in window.comparison.transcript()
+    assert len(window.comparison.canvas.block_items()) == 1
+
+
+def test_clear_and_remove_recent_files(window: MainWindow, tmp_path: Path) -> None:
+    p1 = tmp_path / "file1.pdf"
+    p2 = tmp_path / "file2.pdf"
+    p1.touch()
+    p2.touch()
+
+    window._remember(p1)
+    window._remember(p2)
+    assert len(window.recent_files()) == 2
+
+    window.remove_recent_file(str(p1.resolve()))
+    assert len(window.recent_files()) == 1
+    assert str(p2.resolve()) in window.recent_files()
+
+    window.clear_recent_files()
+    assert len(window.recent_files()) == 0
+
+
+def test_document_history_action_opens_dialog(
+    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from src.gui.dialogs.document_history import DocumentHistoryDialog
+
+    opened = False
+
+    def mock_exec(self: DocumentHistoryDialog) -> int:
+        nonlocal opened
+        opened = True
+        return 0
+
+    monkeypatch.setattr(DocumentHistoryDialog, "exec", mock_exec)
+
+    action = window.command_actions.get("document_history")
+    assert action is not None
+    action.trigger()
+
+    assert opened is True
+
+

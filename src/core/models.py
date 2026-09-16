@@ -4,11 +4,14 @@ from __future__ import annotations
 
 import json
 import math
+import re
 from dataclasses import dataclass, fields, replace
 from enum import Enum
 from typing import Any, TypeVar, get_args, get_origin, get_type_hints
 
 from src.constants import LOW_CONFIDENCE_THRESHOLD, BlockType, PageType
+
+_LIST_MARKER_PATTERN = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
 
 ModelT = TypeVar("ModelT", bound="ImmutableModel")
 Point = tuple[float, float]
@@ -226,7 +229,23 @@ class OCRBlock(ImmutableModel):
 
     @property
     def text(self) -> str:
-        return "\n".join(line.text for line in self.lines)
+        if not self.lines:
+            return ""
+        if len(self.lines) == 1:
+            return self.lines[0].text
+        parts: list[str] = [self.lines[0].text]
+        for line_index in range(1, len(self.lines)):
+            prev_line_text = self.lines[line_index - 1].text.rstrip()
+            curr_line_text = self.lines[line_index].text.lstrip()
+            if prev_line_text.endswith(":") or bool(
+                _LIST_MARKER_PATTERN.match(curr_line_text)
+            ):
+                parts.append("\n" + curr_line_text)
+            elif prev_line_text.endswith("-") and not prev_line_text.endswith(" -"):
+                parts.append(curr_line_text)
+            else:
+                parts.append(" " + curr_line_text)
+        return "".join(parts)
 
 
 @dataclass(frozen=True)

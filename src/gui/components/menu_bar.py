@@ -59,6 +59,12 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     ActionSpec(
         "settings", "&Cài đặt…", "Ctrl+,", "Cấu hình thư mục weights và thiết bị chạy."
     ),
+    ActionSpec(
+        "document_history",
+        "Lịch sử &mở tệp…",
+        "",
+        "Xem và quản lý toàn bộ lịch sử các tệp đã mở.",
+    ),
     ActionSpec("about", "&Giới thiệu", "", "Thông tin về ứng dụng."),
 )
 
@@ -69,6 +75,7 @@ MENU_LAYOUT: tuple[tuple[str, tuple[str, ...]], ...] = (
             "open_file",
             "open_folder",
             RECENT_FILES_SLOT,
+            "document_history",
             SEPARATOR,
             "export",
             SEPARATOR,
@@ -93,13 +100,15 @@ def retranslate_actions(actions: Mapping[str, QAction]) -> None:
             action.setStatusTip(translate_menu(spec.status_tip))
 
 
-def create_actions(parent: QWidget) -> dict[str, QAction]:
-    """Build every command once so menu bar and tool bar stay in lockstep."""
+def create_actions(
+    parent: QWidget | None = None,
+) -> dict[str, QAction]:
+    """Instantiate every command action with untranslated baseline strings."""
     actions: dict[str, QAction] = {}
     for spec in ACTION_SPECS:
-        action = QAction(translate_menu(spec.text), parent)
+        action = QAction(spec.text, parent)
         action.setObjectName(f"action_{spec.key}")
-        action.setStatusTip(translate_menu(spec.status_tip))
+        action.setStatusTip(spec.status_tip)
         action.setCheckable(spec.checkable)
         if spec.shortcut:
             action.setShortcut(QKeySequence(spec.shortcut))
@@ -124,6 +133,7 @@ class RecentFilesMenu(QMenu):
             action = self.addAction(f"&{index}. {Path(path).name}")
             action.setData(path)
             action.setStatusTip(path)
+            action.setToolTip(path)
             action.triggered.connect(partial(self.file_selected.emit, path))
         self.setEnabled(bool(paths))
 

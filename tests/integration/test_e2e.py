@@ -82,11 +82,23 @@ def stub_engine() -> None:
             blocks = []
             for index, text in enumerate(SAMPLE_LINES):
                 top = 20.0 + index * 60.0
-                box = BoundingBox(20.0, top, min(width - 1.0, 700.0), top + 40.0)
+                parts = text.split(" ")
+                total_w = min(width - 1.0, 700.0) - 20.0
+                word_w = total_w / max(1, len(parts))
                 words = tuple(
-                    OCRWord(part, box, 0.99 if index else 0.62)
-                    for part in text.split(" ")
+                    OCRWord(
+                        part,
+                        BoundingBox(
+                            20.0 + j * word_w,
+                            top,
+                            20.0 + (j + 1) * word_w,
+                            top + 40.0,
+                        ),
+                        0.99 if index else 0.62,
+                    )
+                    for j, part in enumerate(parts)
                 )
+                box = BoundingBox(20.0, top, min(width - 1.0, 700.0), top + 40.0)
                 blocks.append(
                     OCRBlock(lines=(OCRLine(words=words, bbox=box),), bbox=box)
                 )

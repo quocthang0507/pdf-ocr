@@ -203,3 +203,15 @@ def test_closing_the_window_with_notifications_open_is_safe(
     window.close()
 
     assert window.notifications.visible_toasts() == []
+
+
+def test_toast_style_has_explicit_readable_colors(center: NotificationCenter) -> None:
+    toast = center.notify("Thông báo rõ ràng", Severity.SUCCESS)
+
+    style = toast.styleSheet()
+    assert "palette(base)" not in style, (
+        "Toast không được dùng palette(base) gây tối/đen nền."
+    )
+    assert "#toast_message" in style, "Cần định dạng màu chữ riêng cho toast message."
+    assert "#toast_close" in style, "Cần định dạng nút đóng toast."
+

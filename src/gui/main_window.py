@@ -4,8 +4,10 @@ from __future__ import annotations
 
 from collections.abc import Callable, Sequence
 from pathlib import Path
+import re
 from typing import TypeVar
 
+import numpy as np
 from PySide6.QtCore import QByteArray, QMimeData, QSettings, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
@@ -16,9 +18,9 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.document_loader import SUPPORTED_EXTENSIONS
+from src.core.document_loader import SUPPORTED_EXTENSIONS, DocumentLoader
 from src.core.exceptions import DocumentLoadError, PDFOCRError
-from src.core.models import BoundingBox
+from src.core.models import BoundingBox, OCRPage
 from src.gui.components.comparison_dock import ComparisonDock
 from src.gui.components.menu_bar import (
     MAX_RECENT_FILES,
@@ -86,6 +88,10 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._settings = settings or QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         self._current_path: Path | None = None
+        self._current_page: int = 1
+        self._total_pages: int = 0
+        self._current_image: np.ndarray | None = None
+        self._recognised_pages: dict[int, OCRPage] = {}
         self._options: dict[str, object] = {}
         self._pipeline = pipeline or PipelineService()
         self._batch: BatchDialog | None = None
@@ -135,9 +141,40 @@ class MainWindow(QMainWindow):
         resolved = target.resolve()
         self.set_current_path(resolved)
         self._remember(resolved)
+        self._recognised_pages.clear()
+        self._load_document_page(resolved, 1)
         self.statusBar().showMessage(f"Đã mở {resolved.name}")
         self.notifications.notify(f"Đã mở {resolved.name}", Severity.SUCCESS)
         self.document_opened.emit(str(resolved))
+
+    def _load_document_page(self, path: Path, page_number: int) -> None:
+        """Load and display one page of the active document."""
+        try:
+            with DocumentLoader(path) as loader:
+                self._total_pages = loader.page_count
+                self._current_page = max(1, min(page_number, loader.page_count))
+                dpi = self._option_number("dpi", DEFAULT_DPI)
+                loaded = loader.load_page(self._current_page, dpi=dpi)
+                self._current_image = loaded.image
+                self.comparison.set_page_info(self._current_page, self._total_pages)
+                if self._current_page in self._recognised_pages:
+                    self.comparison.set_page(
+                        self._recognised_pages[self._current_page], loaded.image
+                    )
+                elif loaded.has_text_layer and loaded.extracted_text.strip():
+                    cleaned = _reconstruct_paragraphs(loaded.extracted_text)
+                    self.comparison.set_image(loaded.image, text=cleaned)
+                else:
+                    self.comparison.set_image(loaded.image)
+        except DocumentLoadError as error:
+            logger.warning("Không thể hiển thị xem trước '{}': {}", path, error)
+        except Exception as error:
+            logger.warning("Lỗi không mong đợi khi hiển thị '{}': {}", path, error)
+
+    def _change_page(self, page_number: int) -> None:
+        """Switch the preview to another page of the currently open document."""
+        if self._current_path is not None:
+            self._load_document_page(self._current_path, page_number)
 
     def open_folder(self, path: str | Path) -> None:
         """Announce a folder of documents for batch processing."""
@@ -191,6 +228,30 @@ class MainWindow(QMainWindow):
     def _refresh_recent_menu(self) -> None:
         self.recent_files_menu.set_paths(self.recent_files())
 
+    def clear_recent_files(self) -> None:
+        """Clear the stored recent files history."""
+        self._settings.setValue(RECENT_FILES_KEY, [])
+        self._refresh_recent_menu()
+        self.notifications.notify(
+            "Đã xóa lịch sử mở tệp.", Severity.INFO, duration_ms=1500
+        )
+
+    def remove_recent_file(self, path: str) -> None:
+        """Remove a single file path from the stored recent files history."""
+        history = [item for item in self.recent_files() if item != path]
+        self._settings.setValue(RECENT_FILES_KEY, history[:MAX_RECENT_FILES])
+        self._refresh_recent_menu()
+
+    def show_document_history(self) -> None:
+        """Display the interactive DocumentHistoryDialog."""
+        from src.gui.dialogs.document_history import DocumentHistoryDialog
+
+        dialog = DocumentHistoryDialog(self.recent_files(), parent=self)
+        dialog.file_selected.connect(self.open_path)
+        dialog.item_removed.connect(self.remove_recent_file)
+        dialog.history_cleared.connect(self.clear_recent_files)
+        dialog.exec()
+
     # -- window state -----------------------------------------------------
 
     def save_session(self) -> None:
@@ -234,6 +295,7 @@ class MainWindow(QMainWindow):
         handlers: dict[str, Callable[[], None]] = {
             "open_file": self.prompt_open_file,
             "open_folder": self.prompt_open_folder,
+            "document_history": self.show_document_history,
             "export": self.request_export,
             "quit": self.request_close,
             "zoom_in": lambda: self.zoom_requested.emit(1),
@@ -245,7 +307,8 @@ class MainWindow(QMainWindow):
             "about": self.show_about,
         }
         for key, handler in handlers.items():
-            self.command_actions[key].triggered.connect(handler)
+            if key in self.command_actions:
+                self.command_actions[key].triggered.connect(handler)
         # A checkable command reports its new state, so it binds to toggled.
         self.command_actions["select_region"].toggled.connect(self.set_region_mode)
         self.recent_files_menu.file_selected.connect(self.open_path)
@@ -348,6 +411,24 @@ class MainWindow(QMainWindow):
         self.notifications.notify(
             f"Đã nhận diện trang {task.page_number}", Severity.SUCCESS, duration_ms=1200
         )
+        if isinstance(page, OCRPage):
+            self._recognised_pages[task.page_number] = page
+            if (
+                self._current_path is not None
+                and Path(task.document_path).resolve() == self._current_path.resolve()
+                and task.page_number == self._current_page
+            ):
+                image = self._current_image
+                if image is None:
+                    try:
+                        with DocumentLoader(self._current_path) as loader:
+                            dpi = self._option_number("dpi", DEFAULT_DPI)
+                            image = loader.load_page(task.page_number, dpi=dpi).image
+                            self._current_image = image
+                    except Exception as error:
+                        logger.warning("Không nạp được ảnh trang OCR: {}", error)
+                if image is not None:
+                    self.comparison.set_page(page, image)
 
     def request_export(self) -> None:
         if self._require_document():
@@ -373,6 +454,7 @@ class MainWindow(QMainWindow):
         self.comparison = ComparisonDock(self)
         self.zoom_requested.connect(self.comparison.apply_zoom)
         self.comparison.region_ocr_requested.connect(self.region_ocr_requested)
+        self.comparison.page_change_requested.connect(self._change_page)
         return self.comparison
 
     def _create_options_dock(self) -> QDockWidget:
@@ -407,3 +489,48 @@ def _dropped_documents(mime: QMimeData) -> tuple[Path, ...]:
         return ()
     candidates = (Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile())
     return tuple(path for path in candidates if _is_supported(path))
+
+
+_PARAGRAPH_LIST_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
+
+
+def _reconstruct_paragraphs(raw_text: str) -> str:
+    """Merge hard-broken lines within paragraphs while preserving true paragraph breaks."""
+    if not raw_text:
+        return ""
+    lines = raw_text.splitlines()
+    paragraphs: list[str] = []
+    current_para: list[str] = []
+
+    for line in lines:
+        stripped = line.strip()
+        if not stripped:
+            if current_para:
+                paragraphs.append(_join_paragraph_lines(current_para))
+                current_para = []
+            continue
+        current_para.append(stripped)
+
+    if current_para:
+        paragraphs.append(_join_paragraph_lines(current_para))
+
+    return "\n\n".join(paragraphs)
+
+
+def _join_paragraph_lines(lines: list[str]) -> str:
+    if not lines:
+        return ""
+    if len(lines) == 1:
+        return lines[0]
+    parts: list[str] = [lines[0]]
+    for idx in range(1, len(lines)):
+        prev = lines[idx - 1]
+        curr = lines[idx]
+        if prev.endswith(":") or bool(_PARAGRAPH_LIST_REGEX.match(curr)):
+            parts.append("\n" + curr)
+        elif prev.endswith("-") and not prev.endswith(" -"):
+            parts[-1] = parts[-1][:-1]
+            parts.append(curr)
+        else:
+            parts.append(" " + curr)
+    return "".join(parts)
