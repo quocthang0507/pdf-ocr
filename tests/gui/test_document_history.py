@@ -4,9 +4,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from PySide6.QtCore import Qt
-from PySide6.QtWidgets import QMessageBox
 import pytest
+from PySide6.QtWidgets import QMessageBox
 
 from src.gui.dialogs.document_history import DocumentHistoryDialog
 

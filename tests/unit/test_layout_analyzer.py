@@ -128,8 +128,8 @@ def test_merge_paragraphs_combines_consecutive_lines_in_same_column() -> None:
     assert len(merged) == 1
     assert len(merged[0].lines) == 3
     assert merged[0].text == (
-        "Thị trường lao động quý III ghi nhận mức tăng trưởng ổn định ở nhiều ngành nghề. "
-        "Số lượng việc làm tăng cao."
+        "Thị trường lao động quý III ghi nhận mức tăng trưởng ổn định "
+        "ở nhiều ngành nghề. Số lượng việc làm tăng cao."
     )
 
 

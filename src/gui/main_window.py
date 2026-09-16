@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import re
 from collections.abc import Callable, Sequence
 from pathlib import Path
-import re
 from typing import TypeVar
 
 import numpy as np
@@ -495,7 +495,7 @@ _PARAGRAPH_LIST_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)
 
 
 def _reconstruct_paragraphs(raw_text: str) -> str:
-    """Merge hard-broken lines within paragraphs while preserving true paragraph breaks."""
+    """Merge broken lines within paragraphs while preserving true paragraph breaks."""
     if not raw_text:
         return ""
     lines = raw_text.splitlines()

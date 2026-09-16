@@ -2,9 +2,9 @@
 
 from __future__ import annotations
 
+import os
 from collections.abc import Sequence
 from datetime import datetime
-import os
 from pathlib import Path
 
 from PySide6.QtCore import Qt, QUrl, Signal
