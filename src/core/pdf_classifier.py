@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 from collections import defaultdict
+from collections.abc import Sequence
 from typing import Any
 
 import pymupdf
@@ -122,10 +123,35 @@ def _build_lines(
     return lines
 
 
-def extract_text_page(page: pymupdf.Page, page_number: int, dpi: int = 300) -> OCRPage:
-    """Extract structured native text layer directly from vector PDF page
+def _text_blocks(page: pymupdf.Page, scale: float) -> tuple[OCRBlock, ...]:
+    """Turn the page's native text runs into blocks, keeping their reading order."""
+    word_map = _build_word_map(page, scale)
+    blocks: list[OCRBlock] = []
+    for index, block in enumerate(page.get_text("dict").get("blocks", [])):
+        if block.get("type") != 0:
+            continue
+        block_lines = _build_lines(block, index, scale, word_map)
+        if not block_lines:
+            continue
+        blocks.append(
+            OCRBlock(
+                lines=tuple(block_lines),
+                bbox=_scaled_box(block["bbox"], scale),
+                block_type=BlockType.TEXT,
+                reading_order=index,
+            )
+        )
+    return tuple(blocks)
 
-    without rasterizing.
+
+def _scaled_box(bbox: Sequence[float], scale: float) -> BoundingBox:
+    """Scale a PDF point box into pixels, never letting it collapse to nothing."""
+    x1, y1, x2, y2 = (float(value) * scale for value in bbox)
+    return BoundingBox(x1=x1, y1=y1, x2=max(x1 + 1.0, x2), y2=max(y1 + 1.0, y2))
+
+
+def extract_text_page(page: pymupdf.Page, page_number: int, dpi: int = 300) -> OCRPage:
+    """Extract the native text layer of a PDF page without rasterizing it.
 
     Args:
         page: PyMuPDF Page object.
@@ -136,50 +162,13 @@ def extract_text_page(page: pymupdf.Page, page_number: int, dpi: int = 300) -> O
         OCRPage: Structured immutable page representation.
     """
     scale = dpi / 72.0
-    width = float(page.rect.width * scale)
-    height = float(page.rect.height * scale)
     page_type = classify_page(page)
-
-    if page_type == PageType.SCANNED:
-        return OCRPage(
-            page_number=page_number,
-            width=width,
-            height=height,
-            blocks=(),
-            page_type=PageType.SCANNED,
-            dpi=dpi,
-        )
-
-    word_map = _build_word_map(page, scale)
-    text_dict = page.get_text("dict")
-    blocks: list[OCRBlock] = []
-
-    for b_idx, block in enumerate(text_dict.get("blocks", [])):
-        if block.get("type") != 0:
-            continue
-        lines = _build_lines(block, b_idx, scale, word_map)
-        if lines:
-            bx0, by0, bx1, by1 = block["bbox"]
-            b_bbox = BoundingBox(
-                x1=bx0 * scale,
-                y1=by0 * scale,
-                x2=max(bx0 * scale + 1.0, bx1 * scale),
-                y2=max(by0 * scale + 1.0, by1 * scale),
-            )
-            blocks.append(
-                OCRBlock(
-                    lines=tuple(lines),
-                    bbox=b_bbox,
-                    block_type=BlockType.TEXT,
-                    reading_order=b_idx,
-                )
-            )
-
+    blocks = () if page_type == PageType.SCANNED else _text_blocks(page, scale)
     return OCRPage(
         page_number=page_number,
-        width=width,
-        height=height,
-        blocks=tuple(blocks),
+        width=float(page.rect.width * scale),
+        height=float(page.rect.height * scale),
+        blocks=blocks,
         page_type=page_type,
         dpi=dpi,
     )

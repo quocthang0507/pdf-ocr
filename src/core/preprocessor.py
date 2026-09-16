@@ -33,10 +33,44 @@ def _ensure_valid_image(image: Any) -> np.ndarray:
     return rgb
 
 
+def _hough_skew(thresh: np.ndarray, width: int, max_angle: float) -> float | None:
+    """Median angle of the long text lines, or None when none stand out."""
+    lines = cv2.HoughLinesP(
+        thresh,
+        rho=1,
+        theta=np.pi / 180,
+        threshold=80,
+        minLineLength=max(30, width // 6),
+        maxLineGap=20,
+    )
+    if lines is None or len(lines) == 0:
+        return None
+    angles: list[float] = []
+    for x1, y1, x2, y2 in lines.reshape(-1, 4):
+        dx = float(x2 - x1)
+        if abs(dx) < 1e-4:
+            continue
+        degrees = -float(np.degrees(np.arctan2(float(y2 - y1), dx)))
+        if abs(degrees) <= max_angle:
+            angles.append(degrees)
+    return float(np.median(angles)) if angles else None
+
+
+def _bounding_box_skew(points: np.ndarray, max_angle: float) -> float:
+    """Fall back to the tilt of the box around every text pixel."""
+    angle = float(cv2.minAreaRect(points)[-1])
+    if angle < -45.0:
+        angle += 90.0
+    elif angle > 45.0:
+        angle -= 90.0
+    return float(np.clip(angle, -max_angle, max_angle))
+
+
 def detect_skew_angle(image: np.ndarray, max_angle: float = 45.0) -> float:
     """Detect document skew angle in degrees (-max_angle to +max_angle).
 
-    Uses Hough Line Transform on high-contrast text lines.
+    Text lines are found with a probabilistic Hough transform; a page with no
+    clear lines falls back to the tilt of the box around all text pixels.
 
     Args:
         image: Input document image (grayscale or RGB).
@@ -47,46 +81,14 @@ def detect_skew_angle(image: np.ndarray, max_angle: float = 45.0) -> float:
     """
     rgb = _ensure_valid_image(image)
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-
-    # Invert binary threshold to identify text pixels
     _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
-    pts = cv2.findNonZero(thresh)
-    if pts is None or len(pts) < 50:
+    points = cv2.findNonZero(thresh)
+    if points is None or len(points) < 50:
         return 0.0
-
-    # Detect line segments using Probabilistic Hough Transform
-    min_length = max(30, rgb.shape[1] // 6)
-    lines = cv2.HoughLinesP(
-        thresh,
-        rho=1,
-        theta=np.pi / 180,
-        threshold=80,
-        minLineLength=min_length,
-        maxLineGap=20,
-    )
-
-    if lines is not None and len(lines) > 0:
-        angles: list[float] = []
-        for x1, y1, x2, y2 in lines.reshape(-1, 4):
-            dx = float(x2 - x1)
-            dy = float(y2 - y1)
-            if abs(dx) < 1e-4:
-                continue
-            deg = -float(np.degrees(np.arctan2(dy, dx)))
-            if abs(deg) <= max_angle:
-                angles.append(deg)
-        if angles:
-            return float(np.median(angles))
-
-    # Fallback to minAreaRect if Hough lines are not detected
-    rect = cv2.minAreaRect(pts)
-    angle = float(rect[-1])
-    if angle < -45.0:
-        angle = 90.0 + angle
-    elif angle > 45.0:
-        angle = angle - 90.0
-
-    return float(np.clip(angle, -max_angle, max_angle))
+    from_lines = _hough_skew(thresh, rgb.shape[1], max_angle)
+    if from_lines is not None:
+        return from_lines
+    return _bounding_box_skew(points, max_angle)
 
 
 def deskew_image(

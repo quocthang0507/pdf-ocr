@@ -339,7 +339,7 @@
   - **Verify:** `pytest -m integration tests/integration/test_e2e.py -v`
   - **Files:** `tests/fixtures/*`, `tests/integration/test_e2e.py`
 
-- [ ] **Task 8.2: Rà soát mã nguồn toàn diện theo 5 Trục (5-Axis Code Review Audit)**
+- [x] **Task 8.2: Rà soát mã nguồn toàn diện theo 5 Trục (5-Axis Code Review Audit)**
   - **Mục tiêu:** Thực hiện kiểm tra toàn diện chất lượng code: Correctness (đạt 100% spec), Readability (hàm $\le 50$ dòng, file $\le 800$ dòng, nesting $\le 4$, không có `print()`, immutability frozen dataclasses), Architecture (Provider pattern, layer separation), Security (`bandit` 0 lỗ hổng, path traversal prevention), Performance (Lazy Loading, zero UI freeze); Test Coverage $\ge 80\%$.
   - **Acceptance:** `ruff check src/` đạt 0 lỗi, `black --check src/` và `isort --check src/` chuẩn format, `mypy src/` đạt 0 lỗi, `bandit -r src/` đạt 0 cảnh báo, độ phủ test $\ge 80\%$, dọn dẹp 100% dead code/unused imports.
   - **Verify:** `pytest tests/ --cov=src --cov-report=term-missing && ruff check src/ && black --check src/ && isort --check src/ && mypy src/ && bandit -r src/`
