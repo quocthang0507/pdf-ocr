@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Callable
+from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TypeVar
 
@@ -13,7 +13,6 @@ from PySide6.QtWidgets import (
     QFileDialog,
     QMainWindow,
     QMessageBox,
-    QStatusBar,
     QWidget,
 )
 
@@ -31,16 +30,23 @@ from src.gui.components.menu_bar import (
 )
 from src.gui.components.notifications import NotificationCenter, Severity
 from src.gui.components.settings_dock import SettingsDock
+from src.gui.components.status_bar import BatchStatusBar
 from src.gui.components.tool_bar import ApplicationToolBar
+from src.gui.dialogs.batch_dialog import BatchDialog
 from src.gui.dialogs.settings_dialog import SettingsDialog
 from src.gui.i18n import translate_menu
+from src.services.pipeline_service import PipelineService
 from src.utils.logger import logger
+from src.workers.batch_manager import BatchManager
+from src.workers.signals import PageTask
 
 ORGANIZATION_NAME = "PDF OCR"
 APPLICATION_NAME = "PDF OCR Desktop"
 RECENT_FILES_KEY = "session/recent_files"
 GEOMETRY_KEY = "session/geometry"
 WINDOW_STATE_KEY = "session/window_state"
+DEFAULT_ENGINE_ID = "vietocr"
+DEFAULT_DPI = 300
 
 ResultT = TypeVar("ResultT")
 
@@ -71,12 +77,18 @@ class MainWindow(QMainWindow):
     settings_requested = Signal()
 
     def __init__(
-        self, *, settings: QSettings | None = None, parent: QWidget | None = None
+        self,
+        *,
+        settings: QSettings | None = None,
+        pipeline: PipelineService | None = None,
+        parent: QWidget | None = None,
     ) -> None:
         super().__init__(parent)
         self._settings = settings or QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         self._current_path: Path | None = None
         self._options: dict[str, object] = {}
+        self._pipeline = pipeline or PipelineService()
+        self._batch: BatchDialog | None = None
         self.setWindowTitle(APPLICATION_NAME)
         self.setAcceptDrops(True)
         self.command_actions = create_actions(self)
@@ -86,7 +98,8 @@ class MainWindow(QMainWindow):
         )
         self.tool_bar = ApplicationToolBar(self.command_actions, self)
         self.addToolBar(self.tool_bar)
-        self.setStatusBar(QStatusBar(self))
+        self.batch_status = BatchStatusBar(self)
+        self.setStatusBar(self.batch_status)
         self.notifications = NotificationCenter(self)
         self.setCentralWidget(self._create_document_view())
         self.addDockWidget(
@@ -279,6 +292,62 @@ class MainWindow(QMainWindow):
     def request_ocr(self) -> None:
         if self._require_document():
             self.ocr_requested.emit(str(self._current_path))
+            self.run_batch([str(self._current_path)])
+
+    @property
+    def batch_dialog(self) -> BatchDialog | None:
+        """The batch window of the run in progress, if one is open."""
+        return self._batch
+
+    def run_batch(self, documents: Sequence[str]) -> None:
+        """Recognise documents in the background, never on the GUI thread."""
+        if not documents:
+            return
+        self.guarded(lambda: self._run_batch(documents), title="Quét hàng loạt")
+
+    def _run_batch(self, documents: Sequence[str]) -> None:
+        session = self._pipeline.open_page_session(
+            engine_id=self._option_text("engine_id", DEFAULT_ENGINE_ID),
+            device=self._option_text("device", "cpu"),
+            dpi=self._option_number("dpi", DEFAULT_DPI),
+        )
+        manager = BatchManager(
+            lambda task: session.recognise(task.document_path, task.page_number),
+            page_counter=session.page_count,
+        )
+        dialog = BatchDialog(manager, documents, self)
+        dialog.page_ready.connect(self._on_page_recognised)
+        dialog.batch_finished.connect(lambda _progress: session.close())
+        self._wire_batch_controls(manager)
+        self._batch = dialog
+        dialog.show()
+        dialog.start()
+        self.batch_status.set_running(True)
+
+    def _option_text(self, key: str, default: str) -> str:
+        """Read a dock option defensively; it may be missing or the wrong shape."""
+        value = self._options.get(key)
+        return value if isinstance(value, str) and value else default
+
+    def _option_number(self, key: str, default: int) -> int:
+        value = self._options.get(key)
+        if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+            return default
+        return value
+
+    def _wire_batch_controls(self, manager: BatchManager) -> None:
+        manager.progress.connect(self.batch_status.show_progress)
+        manager.finished.connect(lambda _p: self.batch_status.set_running(False))
+        manager.cancelled.connect(lambda _p: self.batch_status.set_running(False))
+        self.batch_status.pause_toggled.connect(
+            lambda paused: manager.pause() if paused else manager.resume()
+        )
+        self.batch_status.cancel_requested.connect(manager.cancel)
+
+    def _on_page_recognised(self, task: PageTask, page: object) -> None:
+        self.notifications.notify(
+            f"Đã nhận diện trang {task.page_number}", Severity.SUCCESS, duration_ms=1200
+        )
 
     def request_export(self) -> None:
         if self._require_document():

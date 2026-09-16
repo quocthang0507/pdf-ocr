@@ -317,7 +317,7 @@
   - **Verify:** `pytest -m unit tests/unit/test_batch_manager.py -v`
   - **Files:** `src/workers/ocr_worker.py`, `src/workers/batch_manager.py`, `src/workers/signals.py`, `tests/unit/test_batch_manager.py`
 
-- [ ] **Task 7.2: Giám sát tiến độ, ước tính thời gian (ETA) & Tạm dừng/Hủy bỏ**
+- [x] **Task 7.2: Giám sát tiến độ, ước tính thời gian (ETA) & Tạm dừng/Hủy bỏ**
   - **Mục tiêu:** Cài đặt các tính năng điều khiển an toàn: Tạm dừng (Pause), Tiếp tục (Resume), Hủy bỏ (Cancel) trên thanh StatusBar và hộp thoại Batch Dialog.
   - **Acceptance:** Nút Pause dừng nhận trang mới ngay lập tức; Cancel hủy an toàn mà không làm crash ứng dụng; tính toán chính xác % tiến độ và ETA.
   - **Verify:** `pytest -m gui tests/gui/test_batch_dialog.py -v`

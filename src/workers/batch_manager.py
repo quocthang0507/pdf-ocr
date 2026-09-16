@@ -112,6 +112,7 @@ class BatchManager(QObject):
         self._completed = 0
         self._failed = 0
         self._total = 0
+        self._planned: dict[str, int] = {}
         self._started_at = self._clock()
         self._running = False
         self._closed = False
@@ -122,6 +123,7 @@ class BatchManager(QObject):
         """Queue every page of every document and return how many were queued."""
         if self._running:
             raise RuntimeError("Một lượt xử lý hàng loạt đang chạy.")
+        self._planned = {}
         tasks = self._plan(paths)
         # A new batch never inherits the previous one's pause or cancel.
         self._control = BatchControl()
@@ -159,8 +161,13 @@ class BatchManager(QObject):
                 logger.warning("Bỏ qua '{}': {}", path.name, error)
                 self.page_failed.emit(PageTask(str(path), 1), str(error))
                 continue
+            self._planned[str(path)] = pages
             tasks.extend(PageTask(str(path), number) for number in range(1, pages + 1))
         return tasks
+
+    def pages_per_document(self) -> dict[str, int]:
+        """How many pages each document contributed to the current batch."""
+        return dict(self._planned)
 
     def wait_for_completion(self, timeout_ms: int = 60_000) -> bool:
         """Wait for the pool to drain and every queued result to be delivered.
