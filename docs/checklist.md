@@ -259,7 +259,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_settings_dialog.py -v`
   - **Files:** `src/gui/dialogs/settings_dialog.py`, `src/gui/components/settings_dock.py`, `tests/gui/test_settings_dialog.py`
 
-- [ ] **Task 6.5: Hộp thoại chỉnh sửa bảng biểu tương tác (Table Editor Dialog)**
+- [x] **Task 6.5: Hộp thoại chỉnh sửa bảng biểu tương tác (Table Editor Dialog)**
   - **Mục tiêu:** Cài đặt `src/gui/dialogs/table_editor.py` hiển thị cấu trúc bảng dưới dạng lưới `QTableWidget`, cho phép người dùng sửa text từng ô, thêm/xóa dòng cột trước khi xuất ra Excel.
   - **Acceptance:** Cho phép sửa trực tiếp dữ liệu bảng và đồng bộ lại vào dữ liệu trang của `OCRDocument`.
   - **Verify:** `pytest -m gui tests/gui/test_table_editor.py -v`

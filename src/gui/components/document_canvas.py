@@ -9,6 +9,7 @@ from PySide6.QtCore import QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QMouseEvent,
     QPainter,
     QPen,
     QPixmap,
@@ -82,6 +83,7 @@ class DocumentCanvas(QGraphicsView):
     """
 
     block_selected = Signal(int)
+    block_activated = Signal(int)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -194,6 +196,15 @@ class DocumentCanvas(QGraphicsView):
     def _apply_zoom(self, factor: float) -> None:
         self._zoom = min(max(factor, MIN_ZOOM), MAX_ZOOM)
         self.setTransform(QTransform.fromScale(self._zoom, self._zoom))
+
+    def mouseDoubleClickEvent(  # noqa: N802 - Qt override
+        self, event: QMouseEvent
+    ) -> None:
+        """A double click asks to work on the block under the cursor."""
+        super().mouseDoubleClickEvent(event)
+        index = self.selected_block()
+        if index is not None:
+            self.block_activated.emit(index)
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802 - Qt override
         steps = event.angleDelta().y()

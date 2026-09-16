@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections.abc import Iterator
 from contextlib import contextmanager
 from dataclasses import dataclass
+from functools import partial
 
 import numpy as np
 from PySide6.QtCore import Qt, Signal
@@ -17,9 +18,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.constants import LOW_CONFIDENCE_COLOR
-from src.core.models import OCRBlock, OCRPage
+from src.constants import LOW_CONFIDENCE_COLOR, BlockType
+from src.core.models import OCRBlock, OCRPage, OCRTable
 from src.gui.components.document_canvas import DocumentCanvas
+from src.gui.dialogs.table_editor import TableEditorDialog
 
 BLOCK_SEPARATOR = "\n\n"
 _ZOOM_ACTIONS = {1: "zoom_in", -1: "zoom_out", 0: "reset_zoom"}
@@ -78,6 +80,7 @@ class ComparisonDock(QWidget):
     """
 
     transcript_edited = Signal(str)
+    table_edited = Signal(int, OCRTable)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -93,10 +96,13 @@ class ComparisonDock(QWidget):
         self.region_label.setWordWrap(True)
         self.region_label.hide()
         self._block_spans: tuple[TextSpan, ...] = ()
+        self._page: OCRPage | None = None
+        self.table_editor: TableEditorDialog | None = None
         self._syncing = False
         self._shortcuts = self._create_shortcuts()
         self._build_layout()
         self.canvas.block_selected.connect(self._focus_text_block)
+        self.canvas.block_activated.connect(self.edit_block_table)
         self.editor.cursorPositionChanged.connect(self._focus_canvas_block)
         self.editor.textChanged.connect(self._publish_transcript)
 
@@ -134,6 +140,7 @@ class ComparisonDock(QWidget):
             raise ValueError("Dữ liệu trang phải là đối tượng OCRPage.")
         transcript, blocks, uncertain = _render(page)
         self._block_spans = blocks
+        self._page = page
         self.canvas.set_image(image)
         self.canvas.set_blocks(page.blocks)
         with self._suspend_sync():
@@ -144,6 +151,8 @@ class ComparisonDock(QWidget):
     def clear(self) -> None:
         """Drop both panes so the next document starts from an empty state."""
         self._block_spans = ()
+        self._page = None
+        self.table_editor = None
         self.canvas.clear_page()
         with self._suspend_sync():
             self.editor.clear()
@@ -157,6 +166,37 @@ class ComparisonDock(QWidget):
     def apply_zoom(self, step: int) -> None:
         """Route a zoom command from the window to the page view."""
         getattr(self.canvas, _ZOOM_ACTIONS[step])()
+
+    # -- table editing ----------------------------------------------------
+
+    def edit_block_table(self, index: int) -> None:
+        """Open the grid editor for the table drawn under this layout block."""
+        table_index = self._table_for_block(index)
+        if table_index is None or self._page is None:
+            return
+        editor = TableEditorDialog(self._page.tables[table_index], self)
+        editor.table_committed.connect(partial(self._publish_table_edit, table_index))
+        self.table_editor = editor
+        editor.open()
+
+    def _table_for_block(self, index: int) -> int | None:
+        """Match a table block to the extracted table drawn inside it."""
+        if self._page is None or not 0 <= index < len(self._page.blocks):
+            return None
+        block = self._page.blocks[index]
+        if block.block_type is not BlockType.TABLE:
+            return None
+        for position, table in enumerate(self._page.tables):
+            centre_x = (table.bbox.x1 + table.bbox.x2) / 2
+            centre_y = (table.bbox.y1 + table.bbox.y2) / 2
+            inside_x = block.bbox.x1 <= centre_x <= block.bbox.x2
+            inside_y = block.bbox.y1 <= centre_y <= block.bbox.y2
+            if inside_x and inside_y:
+                return position
+        return None
+
+    def _publish_table_edit(self, index: int, table: OCRTable) -> None:
+        self.table_edited.emit(index, table)
 
     # -- region results ---------------------------------------------------
 
