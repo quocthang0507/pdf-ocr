@@ -345,7 +345,7 @@
   - **Verify:** `pytest tests/ --cov=src --cov-report=term-missing && ruff check src/ && black --check src/ && isort --check src/ && mypy src/ && bandit -r src/`
   - **Files:** Toàn bộ repository
 
-- [ ] **Task 8.3: Hoàn thiện Sổ tay Hướng dẫn Sử Dụng (User Guide & Docs)**
+- [x] **Task 8.3: Hoàn thiện Sổ tay Hướng dẫn Sử Dụng (User Guide & Docs)**
   - **Mục tiêu:** Soạn thảo `docs/user_guide.md` chi tiết với hình ảnh minh họa cách sử dụng từng tính năng, cách cấu hình lưu weights vào ổ cứng ngoài, phím tắt và mẹo tối ưu hóa nhận diện.
   - **Acceptance:** Tài liệu đầy đủ, dễ hiểu, hướng dẫn chi tiết từ cài đặt đến xuất file.
   - **Verify:** Kiểm tra tính đầy đủ của file `docs/user_guide.md`
