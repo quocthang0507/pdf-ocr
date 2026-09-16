@@ -311,7 +311,7 @@
 
 ### Giai Đoạn 7: Xử Lý Đa Luồng & Quét Hàng Loạt (Batch Processing & Concurrency)
 
-- [ ] **Task 7.1: Quản lý hàng đợi tác vụ nền (QThreadPool & OCRWorker)**
+- [x] **Task 7.1: Quản lý hàng đợi tác vụ nền (QThreadPool & OCRWorker)**
   - **Mục tiêu:** Cài đặt `src/workers/ocr_worker.py` (kế thừa `QRunnable`) và `src/workers/batch_manager.py` xử lý tuần tự hoặc song song nhiều trang tài liệu mà không làm đơ giao diện chính.
   - **Acceptance:** Xử lý file PDF lớn (50-100 trang) hoàn toàn dưới nền; GUI duy trì phản hồi 60 FPS.
   - **Verify:** `pytest -m unit tests/unit/test_batch_manager.py -v`
