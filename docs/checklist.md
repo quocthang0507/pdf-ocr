@@ -271,7 +271,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_theme_manager.py -v`
   - **Files:** `src/gui/styles/dark_theme.qss`, `src/gui/styles/light_theme.qss`, `src/gui/styles/style_manager.py`, `tests/gui/test_theme_manager.py`
 
-- [ ] **Task 6.7: Hộp thoại tải Model Weights với Retry & SHA256 (Download Progress Dialog)**
+- [x] **Task 6.7: Hộp thoại tải Model Weights với Retry & SHA256 (Download Progress Dialog)**
   - **Mục tiêu:** Cài đặt `src/gui/dialogs/download_dialog.py` hiển thị thanh tiến trình % tải, tốc độ mạng (KB/s, MB/s), thời gian ước tính còn lại, nút Hủy tải an toàn. Tích hợp cơ chế tự động thử lại 3 lần (exponential backoff) khi mạng chập chờn. Sau khi tải xong, xác minh tính toàn vẹn file bằng mã băm SHA256 trước khi lưu.
   - **Acceptance:** Tải model hiển thị % chính xác; tự phục hồi khi mạng gián đoạn nhẹ; hủy giữa chừng không corrupt file weights; báo lỗi rõ ràng khi không có Internet.
   - **Verify:** `pytest -m gui tests/gui/test_download_dialog.py -v`

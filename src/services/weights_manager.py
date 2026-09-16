@@ -1,11 +1,17 @@
 """Central model storage and cache hooks, without importing any AI framework."""
 
+import hashlib
 import os
 import re
 import shutil
 import sys
+import time
 from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
+from typing import Any
+from urllib.parse import urlparse
+from urllib.request import urlopen
 
 from src.core.exceptions import WeightsError
 from src.utils.file_utils import (
@@ -30,8 +36,16 @@ _CACHE_DIRECTORIES = {
     "EASYOCR_MODULE_PATH": "easyocr",
 }
 MIGRATION_HEADROOM_BYTES = 16 * 1024 * 1024
+DOWNLOAD_ATTEMPTS = 3
+DOWNLOAD_BACKOFF_SECONDS = 1.0
+DOWNLOAD_TIMEOUT_SECONDS = 30.0
+_CHUNK_BYTES = 256 * 1024
+_SHA256_PATTERN = re.compile(r"[0-9a-fA-F]{64}")
+
 ProgressCallback = Callable[[int], None]
 CancelCheck = Callable[[], bool]
+DownloadCallback = Callable[["DownloadProgress"], None]
+Opener = Callable[[str, float], Any]
 
 _RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL"} | {
     f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
@@ -245,3 +259,152 @@ def _discard(target: Path, *, remove_root: bool) -> None:
     """Roll back a half-finished move without touching the source folder."""
     if remove_root:
         shutil.rmtree(target, ignore_errors=True)
+
+
+@dataclass(frozen=True)
+class DownloadProgress:
+    """One immutable snapshot of a transfer, ready for the progress dialog."""
+
+    downloaded_bytes: int
+    total_bytes: int
+    bytes_per_second: float
+
+    @property
+    def percent(self) -> int:
+        if self.total_bytes <= 0:
+            return 0
+        return min(100, int(self.downloaded_bytes * 100 / self.total_bytes))
+
+    @property
+    def seconds_remaining(self) -> float:
+        remaining = self.total_bytes - self.downloaded_bytes
+        if remaining <= 0 or self.bytes_per_second <= 0:
+            return 0.0
+        return remaining / self.bytes_per_second
+
+
+def _checked_url(url: str) -> str:
+    """Only plain web downloads are allowed; never file:// or other schemes."""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("http", "https") or not parsed.netloc:
+        raise WeightsError("Địa chỉ tải mô hình không hợp lệ.")
+    return url
+
+
+def _checked_digest(sha256: str) -> str:
+    if not isinstance(sha256, str) or _SHA256_PATTERN.fullmatch(sha256) is None:
+        raise WeightsError("Thiếu mã băm SHA256 hợp lệ để xác minh tệp tải về.")
+    return sha256.lower()
+
+
+def file_digest(path: Path) -> str:
+    """Hash a file in chunks so large weights never load into memory at once."""
+    digest = hashlib.sha256()
+    with path.open("rb") as stream:
+        for chunk in iter(lambda: stream.read(_CHUNK_BYTES), b""):
+            digest.update(chunk)
+    return digest.hexdigest()
+
+
+def download_weights(
+    url: str,
+    destination: str | Path,
+    *,
+    sha256: str,
+    opener: Opener | None = None,
+    on_progress: DownloadCallback | None = None,
+    should_cancel: CancelCheck | None = None,
+    attempts: int = DOWNLOAD_ATTEMPTS,
+    backoff: float = DOWNLOAD_BACKOFF_SECONDS,
+) -> Path:
+    """Fetch one weights file, retrying briefly, and verify it before keeping it.
+
+    The transfer runs into a sibling `.part` file, so a cancellation, a dropped
+    connection or a hash mismatch can never leave a corrupt file in its place.
+    """
+    address = _checked_url(url)
+    expected = _checked_digest(sha256)
+    target = Path(destination)
+    if target.is_file() and file_digest(target) == expected:
+        logger.info("Tệp weights đã có sẵn và hợp lệ; bỏ qua tải xuống.")
+        return target
+    target.parent.mkdir(parents=True, exist_ok=True)
+    partial = target.with_name(f"{target.name}.part")
+    fetch = opener or _default_opener
+    last_error: Exception | None = None
+    for attempt in range(1, max(attempts, 1) + 1):
+        try:
+            _fetch_once(fetch, address, partial, on_progress, should_cancel)
+            return _finalize(partial, target, expected)
+        except WeightsError:
+            partial.unlink(missing_ok=True)
+            raise
+        except (OSError, ValueError) as error:
+            last_error = error
+            partial.unlink(missing_ok=True)
+            logger.warning("Tải weights thất bại lần {}: {}", attempt, error)
+            if attempt < max(attempts, 1):
+                time.sleep(backoff * (2 ** (attempt - 1)))
+    raise WeightsError(
+        "Không thể tải mô hình. Vui lòng kiểm tra kết nối mạng và thử lại."
+    ) from last_error
+
+
+def _default_opener(url: str, timeout: float = DOWNLOAD_TIMEOUT_SECONDS) -> Any:
+    """Open a web address, re-checking the scheme so only http(s) ever opens.
+
+    The guard below is why the urlopen call is audited-safe: file:// and every
+    other scheme is refused here as well as in download_weights.
+    """
+    if urlparse(url).scheme not in ("http", "https"):
+        raise WeightsError("Địa chỉ tải mô hình không hợp lệ.")
+    return urlopen(url, timeout=timeout)  # nosec B310
+
+
+def _fetch_once(
+    fetch: Opener,
+    url: str,
+    partial: Path,
+    on_progress: DownloadCallback | None,
+    should_cancel: CancelCheck | None,
+) -> None:
+    started = time.monotonic()
+    downloaded = 0
+    with fetch(url, DOWNLOAD_TIMEOUT_SECONDS) as response:
+        total = _content_length(response)
+        with partial.open("wb") as stream:
+            while True:
+                if should_cancel is not None and should_cancel():
+                    raise WeightsError("Đã hủy tải mô hình.")
+                chunk = response.read(_CHUNK_BYTES)
+                if not chunk:
+                    break
+                stream.write(chunk)
+                downloaded += len(chunk)
+                _report_download(on_progress, downloaded, total, started)
+    _report_download(on_progress, downloaded, downloaded or total, started)
+
+
+def _content_length(response: Any) -> int:
+    try:
+        return int(response.headers.get("Content-Length") or 0)
+    except (AttributeError, TypeError, ValueError):
+        return 0
+
+
+def _report_download(
+    on_progress: DownloadCallback | None, downloaded: int, total: int, started: float
+) -> None:
+    if on_progress is None:
+        return
+    elapsed = max(time.monotonic() - started, 1e-6)
+    on_progress(DownloadProgress(downloaded, total, downloaded / elapsed))
+
+
+def _finalize(partial: Path, target: Path, expected: str) -> Path:
+    if file_digest(partial) != expected:
+        partial.unlink(missing_ok=True)
+        raise WeightsError("Tệp tải về không đạt kiểm tra toàn vẹn SHA256.")
+    os.replace(partial, target)
+    logger.info("Đã tải và xác minh weights thành công.")
+    return target
