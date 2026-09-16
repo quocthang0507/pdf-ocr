@@ -90,11 +90,17 @@ class ModelWeightsManager:
 
     @staticmethod
     def _default_path() -> Path:
+        """In a frozen bundle prefer models/ beside the executable, else src/models.
+
+        A portable copy ships its weights in models/, but a bundle built from a
+        checkout may still carry src/models, so both layouts are accepted.
+        """
         root = get_app_root()
-        candidate = root / "src" / "models"
-        if getattr(sys, "frozen", False) and not candidate.is_dir():
-            return root / "models"
-        return candidate
+        source_layout = root / "src" / "models"
+        if not getattr(sys, "frozen", False):
+            return source_layout
+        bundled = root / "models"
+        return source_layout if source_layout.is_dir() else bundled
 
     @property
     def base_path(self) -> Path:

@@ -351,7 +351,7 @@
   - **Verify:** Kiểm tra tính đầy đủ của file `docs/user_guide.md`
   - **Files:** `docs/user_guide.md`
 
-- [ ] **Task 8.4: Đóng gói ứng dụng Portable bằng PyInstaller & Chạy Offline trên máy khác**
+- [x] **Task 8.4: Đóng gói ứng dụng Portable bằng PyInstaller & Chạy Offline trên máy khác**
   - **Mục tiêu:** Cài đặt file cấu hình `packaging/pdf-ocr.spec` và kịch bản đóng gói `packaging/build_portable.py` sử dụng PyInstaller (chế độ Onedir). Tích hợp cơ chế phát hiện môi trường `sys.frozen` để ứng dụng tự động nhận diện thư mục `src/models/` (hoặc `models/`) đi kèm trong bundle phân phối.
   - **Acceptance:** Tạo thành công gói ứng dụng độc lập trong thư mục `dist/pdf-ocr/` chứa `pdf-ocr.exe`; khi sao chép thư mục bundle này kèm theo thư mục weights sang máy tính khác (máy trắng không cài Python, không có Internet), ứng dụng khởi động thành công, nhận diện được weights cục bộ và thực hiện OCR offline 100%.
   - **Verify:** `pyinstaller packaging/pdf-ocr.spec --noconfirm`
