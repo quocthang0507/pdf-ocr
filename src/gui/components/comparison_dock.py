@@ -19,11 +19,13 @@ from PySide6.QtWidgets import (
 )
 
 from src.constants import LOW_CONFIDENCE_COLOR, BlockType
-from src.core.models import OCRBlock, OCRPage, OCRTable
+from src.core.models import BoundingBox, OCRBlock, OCRPage, OCRTable
 from src.gui.components.document_canvas import DocumentCanvas
 from src.gui.dialogs.table_editor import TableEditorDialog
 
 BLOCK_SEPARATOR = "\n\n"
+_MIN_PAGE_PANE_WIDTH = 240
+_EVEN_SPLIT = 600
 _ZOOM_ACTIONS = {1: "zoom_in", -1: "zoom_out", 0: "reset_zoom"}
 
 
@@ -81,11 +83,13 @@ class ComparisonDock(QWidget):
 
     transcript_edited = Signal(str)
     table_edited = Signal(int, OCRTable)
+    region_ocr_requested = Signal(BoundingBox)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("comparison_dock")
         self.canvas = DocumentCanvas(self)
+        self.canvas.setMinimumWidth(_MIN_PAGE_PANE_WIDTH)
         self.editor = QTextEdit(self)
         self.editor.setObjectName("transcript_editor")
         self.editor.setAcceptRichText(False)
@@ -103,6 +107,7 @@ class ComparisonDock(QWidget):
         self._build_layout()
         self.canvas.block_selected.connect(self._focus_text_block)
         self.canvas.block_activated.connect(self.edit_block_table)
+        self.canvas.region_selected.connect(self.region_ocr_requested)
         self.editor.cursorPositionChanged.connect(self._focus_canvas_block)
         self.editor.textChanged.connect(self._publish_transcript)
 
@@ -118,6 +123,9 @@ class ComparisonDock(QWidget):
         splitter.addWidget(text_pane)
         splitter.setStretchFactor(0, 1)
         splitter.setStretchFactor(1, 1)
+        # The editor's size hint would otherwise squeeze the page out of view.
+        splitter.setChildrenCollapsible(False)
+        splitter.setSizes([_EVEN_SPLIT, _EVEN_SPLIT])
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
@@ -199,6 +207,15 @@ class ComparisonDock(QWidget):
         self.table_edited.emit(index, table)
 
     # -- region results ---------------------------------------------------
+
+    def set_region_mode(self, enabled: bool) -> None:
+        """Let the user draw a rectangle to recognise instead of the whole page."""
+        self.canvas.set_region_mode(enabled)
+        if not enabled:
+            self.show_region_result("")
+
+    def region_mode(self) -> bool:
+        return self.canvas.region_mode()
 
     def show_region_result(self, text: str) -> None:
         """Display text recognised from a selected region beside the transcript."""

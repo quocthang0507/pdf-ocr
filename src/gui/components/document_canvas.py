@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Sequence
 
 import numpy as np
-from PySide6.QtCore import QRectF, QSizeF, Qt, Signal
+from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.constants import BLOCK_TYPE_COLORS, SELECTION_COLOR
-from src.core.models import OCRBlock
+from src.core.models import BoundingBox, OCRBlock
 from src.utils.image_utils import ndarray_to_qimage
 
 MIN_ZOOM = 0.05
@@ -35,6 +35,8 @@ ZOOM_STEP = 1.25
 _OUTLINE_WIDTH = 2.0
 _SELECTED_WIDTH = 3.0
 _FILL_ALPHA = 38
+_REGION_ALPHA = 28
+_MIN_REGION_PIXELS = 4.0
 
 
 class BlockItem(QGraphicsRectItem):
@@ -84,6 +86,7 @@ class DocumentCanvas(QGraphicsView):
 
     block_selected = Signal(int)
     block_activated = Signal(int)
+    region_selected = Signal(BoundingBox)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -96,6 +99,9 @@ class DocumentCanvas(QGraphicsView):
         self.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self._page_item: QGraphicsPixmapItem | None = None
         self._block_items: list[BlockItem] = []
+        self._region_item: QGraphicsRectItem | None = None
+        self._region_origin: QPointF | None = None
+        self._region_mode = False
         self._zoom = 1.0
         self.scene().selectionChanged.connect(self._publish_selection)
 
@@ -125,6 +131,8 @@ class DocumentCanvas(QGraphicsView):
     def clear_page(self) -> None:
         """Drop every page item so a new document starts from a clean scene."""
         self._remove_block_items()
+        self._region_item = None
+        self._region_origin = None
         self.scene().clear()
         self._page_item = None
         self.scene().setSceneRect(QRectF())
@@ -167,6 +175,85 @@ class DocumentCanvas(QGraphicsView):
         index = self.selected_block()
         if index is not None:
             self.block_selected.emit(index)
+
+    # -- region selection -------------------------------------------------
+
+    def region_mode(self) -> bool:
+        return self._region_mode
+
+    def set_region_mode(self, enabled: bool) -> None:
+        """Swap panning for rectangle drawing, and clear any previous region."""
+        self._region_mode = enabled
+        self.setDragMode(
+            QGraphicsView.DragMode.NoDrag
+            if enabled
+            else QGraphicsView.DragMode.ScrollHandDrag
+        )
+        self.setCursor(
+            Qt.CursorShape.CrossCursor if enabled else Qt.CursorShape.ArrowCursor
+        )
+        self.clear_region()
+
+    def selected_region(self) -> BoundingBox | None:
+        """The drawn rectangle in page pixels, or None when nothing is drawn."""
+        if self._region_item is None:
+            return None
+        rect = self._region_item.rect()
+        return BoundingBox(rect.left(), rect.top(), rect.right(), rect.bottom())
+
+    def region_item(self) -> QGraphicsRectItem | None:
+        return self._region_item
+
+    def clear_region(self) -> None:
+        if self._region_item is not None:
+            self.scene().removeItem(self._region_item)
+        self._region_item = None
+        self._region_origin = None
+
+    def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if not self._region_mode or event.button() != Qt.MouseButton.LeftButton:
+            super().mousePressEvent(event)
+            return
+        self.clear_region()
+        self._region_origin = self.mapToScene(event.position().toPoint())
+        event.accept()
+
+    def mouseMoveEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._region_origin is None:
+            super().mouseMoveEvent(event)
+            return
+        self._draw_region(self.mapToScene(event.position().toPoint()))
+        event.accept()
+
+    def mouseReleaseEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if self._region_origin is None:
+            super().mouseReleaseEvent(event)
+            return
+        rect = self._draw_region(self.mapToScene(event.position().toPoint()))
+        self._region_origin = None
+        event.accept()
+        if rect.width() < _MIN_REGION_PIXELS or rect.height() < _MIN_REGION_PIXELS:
+            self.clear_region()
+            return
+        region = self.selected_region()
+        if region is not None:
+            self.region_selected.emit(region)
+
+    def _draw_region(self, corner: QPointF) -> QRectF:
+        """Keep the rubber band inside the page, whichever way the user drags."""
+        origin = self._region_origin or corner
+        rect = QRectF(origin, corner).normalized().intersected(self._page_rect())
+        if self._region_item is None:
+            self._region_item = self.scene().addRect(rect, *_region_style())
+            self._region_item.setZValue(2)
+        else:
+            self._region_item.setRect(rect)
+        return rect
+
+    def _page_rect(self) -> QRectF:
+        if self._page_item is None:
+            return QRectF()
+        return self._page_item.boundingRect()
 
     # -- zoom and pan -----------------------------------------------------
 
@@ -213,3 +300,13 @@ class DocumentCanvas(QGraphicsView):
             return
         self._apply_zoom(self._zoom * (ZOOM_STEP ** (steps / 120)))
         event.accept()
+
+
+def _region_style() -> tuple[QPen, QBrush]:
+    """Dashed outline with a light wash, so the page stays readable underneath."""
+    pen = QPen(QColor(SELECTION_COLOR), _SELECTED_WIDTH)
+    pen.setCosmetic(True)
+    pen.setStyle(Qt.PenStyle.DashLine)
+    fill = QColor(SELECTION_COLOR)
+    fill.setAlpha(_REGION_ALPHA)
+    return pen, QBrush(fill)

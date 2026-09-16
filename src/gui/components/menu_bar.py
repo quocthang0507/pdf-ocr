@@ -24,6 +24,7 @@ class ActionSpec:
     text: str
     shortcut: str = ""
     status_tip: str = ""
+    checkable: bool = False
 
 
 ACTION_SPECS: tuple[ActionSpec, ...] = (
@@ -40,6 +41,13 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     ActionSpec("zoom_out", "Thu &nhỏ", "Ctrl+-", "Thu nhỏ trang tài liệu."),
     ActionSpec("zoom_reset", "Vừa &khung", "Ctrl+0", "Hiển thị vừa khung cửa sổ."),
     ActionSpec("run_ocr", "&Chạy OCR", "F5", "Nhận diện văn bản của tài liệu đang mở."),
+    ActionSpec(
+        "select_region",
+        "Chọn &vùng OCR",
+        "Ctrl+R",
+        "Vẽ một vùng trên trang để chỉ nhận diện phần đó.",
+        checkable=True,
+    ),
     ActionSpec(
         "settings", "&Cài đặt…", "Ctrl+,", "Cấu hình thư mục weights và thiết bị chạy."
     ),
@@ -60,7 +68,7 @@ MENU_LAYOUT: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     ("&Xem", ("zoom_in", "zoom_out", "zoom_reset")),
-    ("&OCR", ("run_ocr",)),
+    ("&OCR", ("run_ocr", "select_region")),
     ("Công &cụ", ("settings",)),
     ("Trợ &giúp", ("about",)),
 )
@@ -73,6 +81,7 @@ def create_actions(parent: QWidget) -> dict[str, QAction]:
         action = QAction(spec.text, parent)
         action.setObjectName(f"action_{spec.key}")
         action.setStatusTip(spec.status_tip)
+        action.setCheckable(spec.checkable)
         if spec.shortcut:
             action.setShortcut(QKeySequence(spec.shortcut))
         actions[spec.key] = action

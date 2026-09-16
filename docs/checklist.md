@@ -277,7 +277,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_download_dialog.py -v`
   - **Files:** `src/gui/dialogs/download_dialog.py`, `src/services/weights_manager.py`, `tests/gui/test_download_dialog.py`
 
-- [ ] **Task 6.8: Chọn vùng OCR trên ảnh (Region Selection)**
+- [x] **Task 6.8: Chọn vùng OCR trên ảnh (Region Selection)**
   - **Mục tiêu:** Bổ sung chế độ vẽ hình chữ nhật trên `DocumentCanvas` cho phép người dùng chọn một vùng cụ thể trên trang để chỉ OCR vùng đó thay vì toàn bộ trang. Kết quả OCR vùng chọn hiển thị ngay trong Bộ so sánh lỗi.
   - **Acceptance:** Vẽ vùng chọn mượt mà, OCR chỉ chạy trên vùng đã chọn, kết quả hiển thị chính xác.
   - **Verify:** `pytest -m gui tests/gui/test_region_selection.py -v`

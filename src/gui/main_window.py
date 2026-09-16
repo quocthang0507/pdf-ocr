@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 
 from src.core.document_loader import SUPPORTED_EXTENSIONS
 from src.core.exceptions import DocumentLoadError, PDFOCRError
+from src.core.models import BoundingBox
 from src.gui.components.comparison_dock import ComparisonDock
 from src.gui.components.menu_bar import (
     MAX_RECENT_FILES,
@@ -62,6 +63,7 @@ class MainWindow(QMainWindow):
     ocr_requested = Signal(str)
     export_requested = Signal(str)
     zoom_requested = Signal(int)
+    region_ocr_requested = Signal(BoundingBox)
     settings_requested = Signal()
 
     def __init__(
@@ -219,6 +221,8 @@ class MainWindow(QMainWindow):
         }
         for key, handler in handlers.items():
             self.command_actions[key].triggered.connect(handler)
+        # A checkable command reports its new state, so it binds to toggled.
+        self.command_actions["select_region"].toggled.connect(self.set_region_mode)
         self.recent_files_menu.file_selected.connect(self.open_path)
 
     def prompt_open_file(self) -> None:
@@ -234,6 +238,10 @@ class MainWindow(QMainWindow):
         )
         if selected:
             self.open_folder(selected)
+
+    def set_region_mode(self, enabled: bool) -> None:
+        """Turn region drawing on the page on or off."""
+        self.comparison.set_region_mode(enabled)
 
     def request_settings(self) -> None:
         self.settings_requested.emit()
@@ -270,6 +278,7 @@ class MainWindow(QMainWindow):
         """Build the verification editor and route view commands into it."""
         self.comparison = ComparisonDock(self)
         self.zoom_requested.connect(self.comparison.apply_zoom)
+        self.comparison.region_ocr_requested.connect(self.region_ocr_requested)
         return self.comparison
 
     def _create_options_dock(self) -> QDockWidget:
