@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.styles.style_manager import is_dark_theme
+
 DEFAULT_DURATION_MS = 4000
 MAX_VISIBLE_TOASTS = 4
 TOAST_WIDTH = 340
@@ -88,6 +90,8 @@ class Toast(QFrame):
         self.adjustSize()
 
     def _is_dark(self) -> bool:
+        if is_dark_theme():
+            return True
         application = QApplication.instance()
         if isinstance(application, QApplication):
             scheme = application.styleHints().colorScheme()

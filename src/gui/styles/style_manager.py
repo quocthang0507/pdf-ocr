@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import Qt
+from PySide6.QtGui import QColor
 from PySide6.QtWidgets import QApplication
 
 from src.utils.logger import logger
@@ -13,6 +14,17 @@ SYSTEM = "system"
 LIGHT = "light"
 DARK = "dark"
 THEMES: tuple[str, ...] = (SYSTEM, LIGHT, DARK)
+
+STATUS_SUCCESS_LIGHT = "#15803d"
+STATUS_SUCCESS_DARK = "#4ade80"
+STATUS_ERROR_LIGHT = "#dc2626"
+STATUS_ERROR_DARK = "#f87171"
+STATUS_WARNING_LIGHT = "#d97706"
+STATUS_WARNING_DARK = "#fbbf24"
+STATUS_INFO_LIGHT = "#1d4ed8"
+STATUS_INFO_DARK = "#60a5fa"
+STATUS_MUTED_LIGHT = "#5a6474"
+STATUS_MUTED_DARK = "#9aa6b8"
 
 
 def _theme_path(name: str) -> Path:
@@ -31,6 +43,9 @@ def _system_theme() -> str:
 
 class StyleManager:
     """Stateful theme service; it owns the application-wide stylesheet."""
+
+    _active_current: str | None = None
+    _active_selected: str | None = None
 
     def __init__(self, application: QApplication | None = None) -> None:
         resolved = application or QApplication.instance()
@@ -75,5 +90,49 @@ class StyleManager:
         self._application.setStyleSheet(self.stylesheet(resolved))
         self._selected = name
         self._current = resolved
+        StyleManager._active_current = resolved
+        StyleManager._active_selected = name
         logger.info("Đã áp dụng giao diện '{}'.", resolved)
         return resolved
+
+
+def is_dark_theme(application: QApplication | None = None) -> bool:
+    """Check whether the application is currently running under a dark theme."""
+    if StyleManager._active_current is not None:
+        return StyleManager._active_current == DARK
+    app = application or QApplication.instance()
+    if isinstance(app, QApplication):
+        sheet = app.styleSheet()
+        if sheet:
+            if "Dark theme" in sheet or "#11161d" in sheet:
+                return True
+            if "Light theme" in sheet or "#f5f7fa" in sheet:
+                return False
+        scheme = app.styleHints().colorScheme()
+        return scheme == Qt.ColorScheme.Dark
+    return False
+
+
+def status_success_color(dark: bool | None = None) -> QColor:
+    """Theme-aware success/exists color (emerald green)."""
+    is_dark = is_dark_theme() if dark is None else dark
+    return QColor(STATUS_SUCCESS_DARK if is_dark else STATUS_SUCCESS_LIGHT)
+
+
+def status_error_color(dark: bool | None = None) -> QColor:
+    """Theme-aware error/missing color (rose red)."""
+    is_dark = is_dark_theme() if dark is None else dark
+    return QColor(STATUS_ERROR_DARK if is_dark else STATUS_ERROR_LIGHT)
+
+
+def status_accent_color(dark: bool | None = None) -> QColor:
+    """Theme-aware accent/running color (blue)."""
+    is_dark = is_dark_theme() if dark is None else dark
+    return QColor(STATUS_INFO_DARK if is_dark else STATUS_INFO_LIGHT)
+
+
+def status_muted_color(dark: bool | None = None) -> QColor:
+    """Theme-aware muted/waiting color (slate)."""
+    is_dark = is_dark_theme() if dark is None else dark
+    return QColor(STATUS_MUTED_DARK if is_dark else STATUS_MUTED_LIGHT)
+

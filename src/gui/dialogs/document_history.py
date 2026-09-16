@@ -23,6 +23,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.styles.style_manager import status_error_color, status_success_color
+
 
 def _format_size(num_bytes: int) -> str:
     """Format file size in human-readable units."""
@@ -192,9 +194,9 @@ class DocumentHistoryDialog(QDialog):
 
             status_item = QTableWidgetItem(status_str)
             if exists:
-                status_item.setForeground(Qt.GlobalColor.darkGreen)
+                status_item.setForeground(status_success_color())
             else:
-                status_item.setForeground(Qt.GlobalColor.red)
+                status_item.setForeground(status_error_color())
             self.table.setItem(row, 4, status_item)
 
         self._update_button_states()

@@ -150,17 +150,75 @@ def test_a_missing_stylesheet_does_not_stop_the_application(
     assert qapp.styleSheet() == ""
 
 
-def test_the_settings_dialog_offers_and_stores_the_theme(qtbot, tmp_path) -> None:
+def test_the_settings_dialog_offers_and_stores_the_theme(
+    qtbot: object, tmp_path: Path
+) -> None:
+    from pytestqt.qtbot import QtBot
+
     from src.config import ConfigManager
     from src.gui.dialogs.settings_dialog import SettingsDialog
 
+    bot = QtBot(qtbot) if not isinstance(qtbot, QtBot) else qtbot
     config = ConfigManager(tmp_path / "config", use_qsettings=False)
     dialog = SettingsDialog(config=config)
-    qtbot.addWidget(dialog)
+    bot.addWidget(dialog)
     dialog.theme_combo.setCurrentIndex(dialog.theme_combo.findData("dark"))
 
-    with qtbot.waitSignal(dialog.theme_changed) as blocker:
+    with bot.waitSignal(dialog.theme_changed) as blocker:
         dialog.accept()
 
     assert blocker.args == ["dark"]
     assert config.load().theme == "dark"
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_modal_and_dialog_widgets_are_styled(manager: StyleManager, theme: str) -> None:
+    sheet = manager.stylesheet(theme)
+    assert "QMessageBox" in sheet
+    assert "QDialogButtonBox" in sheet
+    assert "QListWidget" in sheet
+    assert "QTableWidget" in sheet
+
+
+def test_is_dark_theme_tracks_current_theme(
+    manager: StyleManager, qapp: QApplication
+) -> None:
+    from src.gui.styles.style_manager import is_dark_theme
+
+    manager.apply("light")
+    assert is_dark_theme(qapp) is False
+
+    manager.apply("dark")
+    assert is_dark_theme(qapp) is True
+
+    manager.apply("light")
+    assert is_dark_theme(qapp) is False
+
+
+def test_status_colors_meet_wcag_contrast() -> None:
+    from src.gui.styles.style_manager import (
+        STATUS_ERROR_DARK,
+        STATUS_ERROR_LIGHT,
+        STATUS_SUCCESS_DARK,
+        STATUS_SUCCESS_LIGHT,
+        status_error_color,
+        status_success_color,
+    )
+
+    light_surface = "#ffffff"
+    dark_surface = "#1a212b"
+
+    # Light theme contrast (WCAG AA >= 4.0 for status items)
+    assert _contrast(STATUS_SUCCESS_LIGHT, light_surface) >= 4.0
+    assert _contrast(STATUS_ERROR_LIGHT, light_surface) >= 4.0
+
+    # Dark theme contrast (WCAG AA >= 4.5)
+    assert _contrast(STATUS_SUCCESS_DARK, dark_surface) >= 4.5
+    assert _contrast(STATUS_ERROR_DARK, dark_surface) >= 4.5
+
+    # Check color getters
+    assert status_success_color(dark=False).name() == STATUS_SUCCESS_LIGHT
+    assert status_success_color(dark=True).name() == STATUS_SUCCESS_DARK
+    assert status_error_color(dark=False).name() == STATUS_ERROR_LIGHT
+    assert status_error_color(dark=True).name() == STATUS_ERROR_DARK
+

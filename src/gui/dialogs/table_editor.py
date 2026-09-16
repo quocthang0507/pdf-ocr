@@ -43,6 +43,7 @@ class TableEditorDialog(QDialog):
         self._source = table
         self.table_widget = QTableWidget(self)
         self.table_widget.setObjectName("table_grid")
+        self.table_widget.setAlternatingRowColors(True)
         self._fill_grid(table)
         self._build_layout()
 
@@ -66,6 +67,7 @@ class TableEditorDialog(QDialog):
 
     def _build_layout(self) -> None:
         controls = QHBoxLayout()
+        controls.setSpacing(8)
         for label, handler, name in (
             ("Thêm dòng", self.add_row, "add_row"),
             ("Xóa dòng", self.remove_row, "remove_row"),
@@ -86,6 +88,8 @@ class TableEditorDialog(QDialog):
         buttons.rejected.connect(self.reject)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
         layout.addLayout(controls)
         layout.addWidget(self.table_widget)
         layout.addWidget(buttons)

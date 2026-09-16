@@ -140,6 +140,8 @@ class DownloadDialog(QDialog):
         buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, parent=self)
         buttons.rejected.connect(self.cancel)
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
         layout.addWidget(self.title_label)
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.rate_label)

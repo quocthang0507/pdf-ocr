@@ -22,6 +22,12 @@ from PySide6.QtWidgets import (
 
 from src.core.models import OCRPage
 from src.gui.components.status_bar import PAUSE_LABEL, RESUME_LABEL, format_duration
+from src.gui.styles.style_manager import (
+    status_accent_color,
+    status_error_color,
+    status_muted_color,
+    status_success_color,
+)
 from src.workers.batch_manager import BatchManager
 from src.workers.signals import BatchProgress, PageTask
 
@@ -66,6 +72,7 @@ class BatchDialog(QDialog):
         self._seen: dict[str, int] = {}
         self.document_list = QListWidget(self)
         self.document_list.setObjectName("batch_documents")
+        self.document_list.setAlternatingRowColors(True)
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setObjectName("batch_total_progress")
         self.progress_bar.setRange(0, 100)
@@ -89,11 +96,13 @@ class BatchDialog(QDialog):
         for path in self._documents:
             item = QListWidgetItem(f"{path.name} — {DocumentState.WAITING.value}")
             item.setData(0x0100, str(path))
+            item.setForeground(status_muted_color())
             self.document_list.addItem(item)
             self._items[str(path)] = item
 
     def _build_layout(self) -> None:
         controls = QHBoxLayout()
+        controls.setSpacing(8)
         controls.addWidget(self.eta_label)
         controls.addStretch(1)
         controls.addWidget(self.pause_button)
@@ -103,6 +112,8 @@ class BatchDialog(QDialog):
         buttons.rejected.connect(self.close)
 
         layout = QVBoxLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(12)
         layout.addWidget(self.document_list)
         layout.addWidget(self.progress_bar)
         layout.addWidget(self.summary_label)
@@ -194,6 +205,14 @@ class BatchDialog(QDialog):
         item = self._items.get(document)
         if item is not None:
             item.setText(f"{Path(document).name} — {state.value}")
+            if state is DocumentState.DONE:
+                item.setForeground(status_success_color())
+            elif state is DocumentState.FAILED:
+                item.setForeground(status_error_color())
+            elif state is DocumentState.RUNNING:
+                item.setForeground(status_accent_color())
+            else:
+                item.setForeground(status_muted_color())
 
     def _on_finished(self, progress: BatchProgress) -> None:
         self._settle()

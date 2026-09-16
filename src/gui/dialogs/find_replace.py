@@ -39,6 +39,8 @@ class FindReplaceDialog(QDialog):
 
     def _build_layout(self) -> None:
         layout = QGridLayout(self)
+        layout.setContentsMargins(16, 16, 16, 16)
+        layout.setSpacing(10)
         layout.addWidget(QLabel("Tìm", self), 0, 0)
         layout.addWidget(self.find_edit, 0, 1)
         layout.addWidget(_button(self, "Tìm tiếp", self.find_next), 0, 2)
