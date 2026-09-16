@@ -4,6 +4,7 @@ import os
 import re
 import shutil
 import sys
+from collections.abc import Callable
 from pathlib import Path
 
 from src.core.exceptions import WeightsError
@@ -28,6 +29,10 @@ _CACHE_DIRECTORIES = {
     "PADDLE_PDX_CACHE_HOME": "paddle/paddlex",
     "EASYOCR_MODULE_PATH": "easyocr",
 }
+MIGRATION_HEADROOM_BYTES = 16 * 1024 * 1024
+ProgressCallback = Callable[[int], None]
+CancelCheck = Callable[[], bool]
+
 _RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL"} | {
     f"{prefix}{number}" for prefix in ("COM", "LPT") for number in range(1, 10)
 }
@@ -137,3 +142,106 @@ class ModelWeightsManager:
             raise WeightsError(
                 "Không đủ dung lượng trống. Vui lòng giải phóng ổ đĩa hoặc đổi thư mục."
             )
+
+
+def _collect_files(source: Path) -> tuple[list[Path], int]:
+    """List every weight file with its total size, before touching the disk."""
+    files = sorted(path for path in source.rglob("*") if path.is_file())
+    return files, sum(path.stat().st_size for path in files)
+
+
+def _validate_migration(source: Path, destination: Path) -> None:
+    if source == destination:
+        raise WeightsError("Thư mục nguồn và thư mục đích đang trùng nhau.")
+    if destination.is_relative_to(source):
+        raise WeightsError(
+            "Thư mục đích không được nằm trong thư mục weights hiện tại."
+        )
+    if source.is_relative_to(destination):
+        raise WeightsError("Thư mục đích không được chứa thư mục weights hiện tại.")
+
+
+def _free_bytes(path: Path) -> int:
+    probe = path
+    while not probe.exists() and probe != probe.parent:
+        probe = probe.parent
+    try:
+        return int(shutil.disk_usage(probe).free)
+    except OSError as error:
+        raise WeightsError("Không thể kiểm tra dung lượng ổ đĩa.") from error
+
+
+def migrate_weights(
+    source: str | Path,
+    destination: str | Path,
+    *,
+    on_progress: ProgressCallback | None = None,
+    should_cancel: CancelCheck | None = None,
+) -> Path:
+    """Move a weights folder safely: copy everything, verify, then drop the source.
+
+    The originals are only removed once every file has been copied, so a failure
+    or a cancellation can never leave the user without their model weights.
+    """
+    origin = normalize_directory(source)
+    target = normalize_directory(destination)
+    _validate_migration(origin, target)
+    if not origin.is_dir():
+        raise WeightsError("Không tìm thấy thư mục weights nguồn.")
+    files, total_bytes = _collect_files(origin)
+    if _free_bytes(target) < total_bytes + MIGRATION_HEADROOM_BYTES:
+        raise WeightsError("Không đủ dung lượng trống tại thư mục đích.")
+    created = not target.exists()
+    try:
+        _copy_all(origin, target, files, total_bytes, on_progress, should_cancel)
+    except WeightsError:
+        _discard(target, remove_root=created)
+        raise
+    shutil.rmtree(origin, ignore_errors=True)
+    logger.info("Đã chuyển weights sang thư mục mới.")
+    return target
+
+
+def _copy_all(
+    origin: Path,
+    target: Path,
+    files: list[Path],
+    total_bytes: int,
+    on_progress: ProgressCallback | None,
+    should_cancel: CancelCheck | None,
+) -> None:
+    copied = 0
+    _report(on_progress, 0)
+    try:
+        ensure_writable_directory(target)
+        for path in files:
+            if should_cancel is not None and should_cancel():
+                raise WeightsError("Đã hủy việc di chuyển weights.")
+            relative = path.relative_to(origin)
+            written = target / relative
+            written.parent.mkdir(parents=True, exist_ok=True)
+            shutil.copy2(path, written)
+            copied += path.stat().st_size
+            _report(on_progress, _percentage(copied, total_bytes))
+    except OSError as error:
+        raise WeightsError(
+            "Không thể sao chép tệp weights sang thư mục đích."
+        ) from error
+    _report(on_progress, 100)
+
+
+def _percentage(copied: int, total: int) -> int:
+    if total <= 0:
+        return 100
+    return min(99, int(copied * 100 / total))
+
+
+def _report(on_progress: ProgressCallback | None, percent: int) -> None:
+    if on_progress is not None:
+        on_progress(percent)
+
+
+def _discard(target: Path, *, remove_root: bool) -> None:
+    """Roll back a half-finished move without touching the source folder."""
+    if remove_root:
+        shutil.rmtree(target, ignore_errors=True)

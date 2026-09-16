@@ -6,9 +6,10 @@ from collections.abc import Callable
 from pathlib import Path
 from typing import TypeVar
 
-from PySide6.QtCore import QByteArray, QMimeData, QSettings, Signal
+from PySide6.QtCore import QByteArray, QMimeData, QSettings, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
+    QDockWidget,
     QFileDialog,
     QMainWindow,
     QMessageBox,
@@ -25,7 +26,9 @@ from src.gui.components.menu_bar import (
     RecentFilesMenu,
     create_actions,
 )
+from src.gui.components.settings_dock import SettingsDock
 from src.gui.components.tool_bar import ApplicationToolBar
+from src.gui.dialogs.settings_dialog import SettingsDialog
 from src.utils.logger import logger
 
 ORGANIZATION_NAME = "PDF OCR"
@@ -67,6 +70,7 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._settings = settings or QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         self._current_path: Path | None = None
+        self._options: dict[str, object] = {}
         self.setWindowTitle(APPLICATION_NAME)
         self.setAcceptDrops(True)
         self.command_actions = create_actions(self)
@@ -78,7 +82,11 @@ class MainWindow(QMainWindow):
         self.addToolBar(self.tool_bar)
         self.setStatusBar(QStatusBar(self))
         self.setCentralWidget(self._create_document_view())
+        self.addDockWidget(
+            Qt.DockWidgetArea.RightDockWidgetArea, self._create_options_dock()
+        )
         self._connect_commands()
+        self._remember_options(self.settings_dock.options())
         self._refresh_recent_menu()
         self._restore_session()
 
@@ -206,7 +214,7 @@ class MainWindow(QMainWindow):
             "zoom_out": lambda: self.zoom_requested.emit(-1),
             "zoom_reset": lambda: self.zoom_requested.emit(0),
             "run_ocr": self.request_ocr,
-            "settings": self.settings_requested.emit,
+            "settings": self.request_settings,
             "about": self.show_about,
         }
         for key, handler in handlers.items():
@@ -226,6 +234,10 @@ class MainWindow(QMainWindow):
         )
         if selected:
             self.open_folder(selected)
+
+    def request_settings(self) -> None:
+        self.settings_requested.emit()
+        self.guarded(self.open_settings, title="Cài đặt")
 
     def request_close(self) -> None:
         """Close through the widget API while keeping the command signature void."""
@@ -259,6 +271,31 @@ class MainWindow(QMainWindow):
         self.comparison = ComparisonDock(self)
         self.zoom_requested.connect(self.comparison.apply_zoom)
         return self.comparison
+
+    def _create_options_dock(self) -> QDockWidget:
+        """Expose the per-run OCR options beside the document."""
+        self.settings_dock = SettingsDock(self)
+        self.settings_dock.options_changed.connect(self._remember_options)
+        container = QDockWidget("Tùy chọn nhận diện", self)
+        container.setObjectName("options_dock")
+        container.setWidget(self.settings_dock)
+        return container
+
+    def ocr_options(self) -> dict[str, object]:
+        """Current engine, device, DPI and preprocessing choices."""
+        return dict(self._options)
+
+    def _remember_options(self, options: dict[str, object]) -> None:
+        self._options = dict(options)
+
+    def open_settings(self) -> None:
+        """Show the settings dialog and apply the new weights folder at once."""
+        dialog = SettingsDialog(parent=self)
+        dialog.weights_directory_changed.connect(self._apply_weights_directory)
+        dialog.exec()
+
+    def _apply_weights_directory(self, directory: str) -> None:
+        self.statusBar().showMessage(f"Đã áp dụng thư mục weights: {directory}")
 
 
 def _dropped_documents(mime: QMimeData) -> tuple[Path, ...]:

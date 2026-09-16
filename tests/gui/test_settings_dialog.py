@@ -1,0 +1,324 @@
+"""Settings apply weights storage, execution device, and processing options."""
+
+from __future__ import annotations
+
+from pathlib import Path
+
+import pytest
+from PySide6.QtWidgets import QDialog, QFileDialog, QMessageBox
+
+from src.config import ConfigManager, Preferences
+from src.core.exceptions import WeightsError
+from src.gui.components.settings_dock import SettingsDock
+from src.gui.dialogs.settings_dialog import SettingsDialog
+from src.services import device_service
+from src.services.device_service import detect_devices, resolve_device
+from src.services.weights_manager import ModelWeightsManager, migrate_weights
+
+pytestmark = pytest.mark.gui
+
+
+@pytest.fixture
+def weights_dir(tmp_path: Path) -> Path:
+    source = tmp_path / "models"
+    (source / "vietocr").mkdir(parents=True)
+    (source / "vietocr" / "transformer.pth").write_bytes(b"trong so mo hinh" * 64)
+    (source / "paddle").mkdir()
+    (source / "paddle" / "det.bin").write_bytes(b"paddle" * 32)
+    return source
+
+
+@pytest.fixture
+def config(tmp_path: Path) -> ConfigManager:
+    return ConfigManager(tmp_path / "config", use_qsettings=False)
+
+
+@pytest.fixture
+def dialog(qtbot, config: ConfigManager, weights_dir: Path) -> SettingsDialog:
+    config.save(Preferences(weights_dir=str(weights_dir)))
+    widget = SettingsDialog(config=config)
+    qtbot.addWidget(widget)
+    return widget
+
+
+# -- device discovery -------------------------------------------------------
+
+
+def test_cpu_is_always_offered(monkeypatch: pytest.MonkeyPatch) -> None:
+    monkeypatch.setattr(device_service, "_load_torch", lambda: None)
+
+    identifiers = {device.identifier for device in detect_devices()}
+
+    assert {"auto", "cpu"} <= identifiers
+
+
+def test_cuda_is_reported_unavailable_without_torch(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setattr(device_service, "_load_torch", lambda: None)
+
+    cuda = next(item for item in detect_devices() if item.identifier == "cuda")
+
+    assert cuda.available is False
+    assert resolve_device("auto") == "cpu"
+
+
+def test_cuda_reports_its_name_and_memory_when_present(
+    monkeypatch: pytest.MonkeyPatch, fake_torch: object
+) -> None:
+    monkeypatch.setattr(device_service, "_load_torch", lambda: fake_torch)
+
+    cuda = next(item for item in detect_devices() if item.identifier == "cuda")
+
+    assert cuda.available is True
+    assert cuda.name == "NVIDIA RTX 4090"
+    assert cuda.total_memory_gb == pytest.approx(24.0, rel=1e-3)
+    assert resolve_device("auto") == "cuda"
+
+
+def test_an_explicit_choice_is_never_overridden(
+    monkeypatch: pytest.MonkeyPatch, fake_torch: object
+) -> None:
+    monkeypatch.setattr(device_service, "_load_torch", lambda: fake_torch)
+
+    assert resolve_device("cpu") == "cpu"
+
+
+def test_a_broken_accelerator_library_degrades_to_cpu(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    class Exploding:
+        @property
+        def cuda(self) -> object:
+            raise RuntimeError("driver mismatch")
+
+    monkeypatch.setattr(device_service, "_load_torch", Exploding)
+
+    assert resolve_device("auto") == "cpu"
+
+
+@pytest.fixture
+def fake_torch() -> object:
+    class Properties:
+        name = "NVIDIA RTX 4090"
+        total_memory = 24 * 1024**3
+
+    class Cuda:
+        @staticmethod
+        def is_available() -> bool:
+            return True
+
+        @staticmethod
+        def get_device_properties(index: int) -> Properties:
+            return Properties()
+
+    class Torch:
+        cuda = Cuda()
+
+    return Torch()
+
+
+# -- weights migration ------------------------------------------------------
+
+
+def test_migration_copies_every_weight_file(weights_dir: Path, tmp_path: Path) -> None:
+    destination = tmp_path / "ổ ngoài" / "models"
+
+    migrate_weights(weights_dir, destination)
+
+    assert (destination / "vietocr" / "transformer.pth").read_bytes() == (
+        b"trong so mo hinh" * 64
+    )
+    assert (destination / "paddle" / "det.bin").is_file()
+
+
+def test_migration_reports_progress_up_to_completion(
+    weights_dir: Path, tmp_path: Path
+) -> None:
+    reported: list[int] = []
+
+    migrate_weights(weights_dir, tmp_path / "đích", on_progress=reported.append)
+
+    assert reported[-1] == 100
+    assert reported == sorted(reported)
+
+
+def test_migration_removes_the_source_only_after_a_full_copy(
+    weights_dir: Path, tmp_path: Path
+) -> None:
+    migrate_weights(weights_dir, tmp_path / "đích")
+
+    assert list(weights_dir.rglob("*.pth")) == []
+
+
+def test_cancelled_migration_leaves_the_original_weights_untouched(
+    weights_dir: Path, tmp_path: Path
+) -> None:
+    destination = tmp_path / "đích"
+
+    with pytest.raises(WeightsError, match="hủy"):
+        migrate_weights(weights_dir, destination, should_cancel=lambda: True)
+
+    assert (weights_dir / "vietocr" / "transformer.pth").is_file()
+    assert not destination.exists()
+
+
+def test_migration_into_the_source_itself_is_refused(weights_dir: Path) -> None:
+    with pytest.raises(WeightsError):
+        migrate_weights(weights_dir, weights_dir / "bên trong")
+
+
+def test_migration_refuses_a_destination_without_room(
+    weights_dir: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import src.services.weights_manager as weights_manager
+
+    class Usage:
+        free = 1
+
+    monkeypatch.setattr(weights_manager.shutil, "disk_usage", lambda _p: Usage())
+
+    with pytest.raises(WeightsError, match="dung lượng"):
+        migrate_weights(weights_dir, tmp_path / "đích")
+
+
+# -- settings dialog --------------------------------------------------------
+
+
+def test_dialog_opens_on_the_saved_preferences(
+    dialog: SettingsDialog, weights_dir: Path
+) -> None:
+    assert dialog.weights_edit.text() == str(weights_dir)
+    assert dialog.device_combo.currentData() == "auto"
+
+
+def test_dialog_shows_free_space_for_the_chosen_folder(
+    dialog: SettingsDialog,
+) -> None:
+    assert "GB" in dialog.free_space_label.text()
+
+
+def test_browsing_updates_the_weights_folder(
+    dialog: SettingsDialog, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    chosen = tmp_path / "thư mục mới"
+    chosen.mkdir()
+    monkeypatch.setattr(
+        QFileDialog, "getExistingDirectory", lambda *a, **k: str(chosen)
+    )
+
+    dialog.browse_weights_dir()
+
+    assert dialog.weights_edit.text() == str(chosen)
+
+
+def test_a_traversing_path_is_refused_before_saving(
+    dialog: SettingsDialog, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    shown: list[str] = []
+    monkeypatch.setattr(
+        QMessageBox, "warning", lambda _p, _t, text, *a, **k: shown.append(text)
+    )
+    dialog.weights_edit.setText("../../etc")
+
+    dialog.accept()
+
+    assert dialog.result() != QDialog.DialogCode.Accepted
+    assert shown
+
+
+def test_accepting_persists_every_choice(
+    dialog: SettingsDialog, config: ConfigManager, tmp_path: Path
+) -> None:
+    output = tmp_path / "ket qua"
+    output.mkdir()
+    dialog.output_edit.setText(str(output))
+    dialog.device_combo.setCurrentIndex(dialog.device_combo.findData("cpu"))
+
+    dialog.accept()
+
+    stored = config.load()
+    assert stored.device == "cpu"
+    assert stored.output_dir == str(output)
+
+
+def test_accepting_applies_the_weights_folder_to_the_manager(
+    dialog: SettingsDialog, tmp_path: Path, qtbot
+) -> None:
+    chosen = tmp_path / "kho weights"
+    chosen.mkdir()
+    dialog.weights_edit.setText(str(chosen))
+
+    with qtbot.waitSignal(dialog.weights_directory_changed) as blocker:
+        dialog.accept()
+
+    assert blocker.args == [str(chosen)]
+    assert ModelWeightsManager(chosen).base_path == chosen.resolve()
+
+
+def test_moving_weights_runs_off_the_gui_thread_and_finishes(
+    dialog: SettingsDialog, qtbot, tmp_path: Path
+) -> None:
+    destination = tmp_path / "kho mới"
+    dialog.weights_edit.setText(str(destination))
+
+    with qtbot.waitSignal(dialog.migration_finished, timeout=15000) as blocker:
+        dialog.start_weights_migration()
+
+    assert blocker.args == [str(destination)]
+    assert dialog.progress_bar.value() == 100
+    assert (destination / "vietocr" / "transformer.pth").is_file()
+
+
+def test_a_failed_move_is_reported_without_technical_detail(
+    dialog: SettingsDialog, qtbot, weights_dir: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setattr(QMessageBox, "warning", lambda *a, **k: None)
+    dialog.weights_edit.setText(str(weights_dir / "bên trong"))
+
+    with qtbot.waitSignal(dialog.migration_failed, timeout=15000) as blocker:
+        dialog.start_weights_migration()
+
+    assert "Traceback" not in blocker.args[0]
+
+
+# -- settings dock ----------------------------------------------------------
+
+
+@pytest.fixture
+def dock(qtbot) -> SettingsDock:
+    widget = SettingsDock()
+    qtbot.addWidget(widget)
+    return widget
+
+
+def test_dock_lists_the_registered_ocr_engines(dock: SettingsDock) -> None:
+    engines = {dock.engine_combo.itemData(i) for i in range(dock.engine_combo.count())}
+
+    assert "vietocr" in engines
+
+
+def test_dock_publishes_the_current_processing_options(
+    dock: SettingsDock, qtbot
+) -> None:
+    with qtbot.waitSignal(dock.options_changed) as blocker:
+        dock.dpi_spin.setValue(400)
+
+    options = blocker.args[0]
+    assert options["dpi"] == 400
+    assert options["engine_id"] == dock.engine_combo.currentData()
+
+
+def test_dock_toggles_each_preprocessing_stage(dock: SettingsDock, qtbot) -> None:
+    with qtbot.waitSignal(dock.options_changed) as blocker:
+        dock.preprocessing_boxes["deskew"].setChecked(False)
+
+    assert blocker.args[0]["preprocessing"]["deskew"] is False
+    assert blocker.args[0]["preprocessing"]["enhance"] is True
+
+
+def test_dock_rejects_a_dpi_outside_the_supported_range(dock: SettingsDock) -> None:
+    dock.dpi_spin.setValue(10_000)
+
+    assert dock.dpi_spin.value() <= dock.dpi_spin.maximum()
+    assert dock.options()["dpi"] == dock.dpi_spin.maximum()

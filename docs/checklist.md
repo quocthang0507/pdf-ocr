@@ -249,7 +249,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_comparison_dock.py -v`
   - **Files:** `src/gui/components/comparison_dock.py`, `tests/gui/test_comparison_dock.py`
 
-- [ ] **Task 6.4: Hộp thoại Cài Đặt Toàn Diện & Quản Lý Weights (Settings Dialog)**
+- [x] **Task 6.4: Hộp thoại Cài Đặt Toàn Diện & Quản Lý Weights (Settings Dialog)**
   - **Mục tiêu:** Cài đặt `src/gui/dialogs/settings_dialog.py` cho phép người dùng:
     1. Chọn thư mục lưu Model & Weights tùy chỉnh (có nút Duyệt, validate đường dẫn chống Path Traversal và hiển thị dung lượng đĩa trống).
     2. Nút "Di chuyển Weights sang thư mục mới" với thanh tiến trình copy file.
