@@ -295,7 +295,7 @@
   - **Verify:** `pytest -m unit tests/unit/test_settings_store.py -v`
   - **Files:** `src/services/settings_store.py`, `src/config.py`, `tests/unit/test_settings_store.py`
 
-- [ ] **Task 6.11: Hệ thống thông báo tùy chỉnh trong ứng dụng (Custom Toast Notifications)**
+- [x] **Task 6.11: Hệ thống thông báo tùy chỉnh trong ứng dụng (Custom Toast Notifications)**
   - **Mục tiêu:** Cài đặt `src/gui/components/notifications.py` cung cấp thông báo toast bốn cấp (thành công, thông tin, cảnh báo, lỗi): hiện ở góc cửa sổ, tự ẩn sau thời gian cấu hình, xếp chồng nhiều thông báo, có nút đóng và không chặn thao tác người dùng. Thay các `QMessageBox` không bắt buộc bằng toast; chỉ giữ hộp thoại chặn cho lỗi nghiêm trọng cần người dùng xác nhận.
   - **Acceptance:** Thông báo hiển thị đúng cấp độ và màu sắc theo theme, tự ẩn đúng thời gian, nhiều thông báo không đè lên nhau, đóng ứng dụng khi còn toast không gây lỗi.
   - **Verify:** `pytest -m gui tests/gui/test_notifications.py -v`

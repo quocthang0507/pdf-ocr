@@ -7,7 +7,6 @@ from pathlib import Path
 import pytest
 from PySide6.QtCore import QMimeData, QPoint, QPointF, QSettings, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
-from PySide6.QtWidgets import QMessageBox
 
 from src.core.exceptions import DocumentLoadError
 from src.gui.components.menu_bar import MAX_RECENT_FILES
@@ -34,6 +33,13 @@ def _pdf(tmp_path: Path, name: str = "hoa-don.pdf") -> Path:
     document = tmp_path / name
     document.write_bytes(b"%PDF-1.4 fake")
     return document
+
+
+def _messages(window: MainWindow) -> list[str]:
+    """The text of every notification currently on screen."""
+    return [
+        toast.message_label.text() for toast in window.notifications.visible_toasts()
+    ]
 
 
 def _mime_for(path: Path) -> QMimeData:
@@ -167,68 +173,48 @@ def test_drag_enter_is_accepted_only_for_supported_documents(
 
 
 def test_unsupported_file_reports_a_friendly_message(
-    window: MainWindow, monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+    window: MainWindow, tmp_path: Path
 ) -> None:
-    shown: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox, "warning", lambda _p, _t, text, *a, **k: shown.append(text)
-    )
     unsupported = tmp_path / "bang-tinh.xyz"
     unsupported.write_text("dữ liệu", encoding="utf-8")
 
     window.open_path(unsupported)
 
-    assert shown == ["Định dạng tệp này chưa được hỗ trợ."]
+    assert _messages(window) == ["Định dạng tệp này chưa được hỗ trợ."]
     assert window.current_path is None
 
 
-def test_error_boundary_keeps_domain_errors_readable(
-    window: MainWindow, monkeypatch: pytest.MonkeyPatch
-) -> None:
-    shown: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox, "warning", lambda _p, _t, text, *a, **k: shown.append(text)
-    )
-
+def test_error_boundary_keeps_domain_errors_readable(window: MainWindow) -> None:
     def failing() -> None:
         raise DocumentLoadError()
 
     result = window.guarded(failing, title="Mở tệp")
 
     assert result is None
-    assert shown == [DocumentLoadError.default_message]
+    assert _messages(window) == [DocumentLoadError.default_message]
 
 
 def test_error_boundary_hides_technical_detail_of_unexpected_errors(
-    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+    window: MainWindow,
 ) -> None:
-    shown: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox, "critical", lambda _p, _t, text, *a, **k: shown.append(text)
-    )
-
     def failing() -> None:
         raise ZeroDivisionError("/home/user/secret/token.txt")
 
     window.guarded(failing, title="Chạy OCR")
 
-    assert shown and "secret" not in shown[0]
+    assert _messages(window) and "secret" not in _messages(window)[0]
 
 
 def test_running_ocr_without_a_document_asks_the_user_to_open_one(
-    window: MainWindow, monkeypatch: pytest.MonkeyPatch
+    window: MainWindow,
 ) -> None:
-    shown: list[str] = []
-    monkeypatch.setattr(
-        QMessageBox, "information", lambda _p, _t, text, *a, **k: shown.append(text)
-    )
     emitted: list[str] = []
     window.ocr_requested.connect(emitted.append)
 
     window.command_actions["run_ocr"].trigger()
 
     assert emitted == []
-    assert shown == ["Vui lòng mở một tài liệu trước khi chạy OCR."]
+    assert _messages(window) == ["Vui lòng mở một tài liệu trước khi chạy OCR."]
 
 
 def test_running_ocr_announces_the_open_document(

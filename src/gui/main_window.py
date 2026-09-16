@@ -27,6 +27,7 @@ from src.gui.components.menu_bar import (
     RecentFilesMenu,
     create_actions,
 )
+from src.gui.components.notifications import NotificationCenter, Severity
 from src.gui.components.settings_dock import SettingsDock
 from src.gui.components.tool_bar import ApplicationToolBar
 from src.gui.dialogs.settings_dialog import SettingsDialog
@@ -83,6 +84,7 @@ class MainWindow(QMainWindow):
         self.tool_bar = ApplicationToolBar(self.command_actions, self)
         self.addToolBar(self.tool_bar)
         self.setStatusBar(QStatusBar(self))
+        self.notifications = NotificationCenter(self)
         self.setCentralWidget(self._create_document_view())
         self.addDockWidget(
             Qt.DockWidgetArea.RightDockWidgetArea, self._create_options_dock()
@@ -118,6 +120,7 @@ class MainWindow(QMainWindow):
         self.set_current_path(resolved)
         self._remember(resolved)
         self.statusBar().showMessage(f"Đã mở {resolved.name}")
+        self.notifications.notify(f"Đã mở {resolved.name}", Severity.SUCCESS)
         self.document_opened.emit(str(resolved))
 
     def open_folder(self, path: str | Path) -> None:
@@ -140,11 +143,15 @@ class MainWindow(QMainWindow):
             return operation()
         except PDFOCRError as error:
             logger.exception("Lệnh '{}' thất bại.", title)
-            QMessageBox.warning(self, title, str(error))
+            self.report_error(str(error))
         except Exception:
             logger.exception("Lệnh '{}' gặp lỗi không mong đợi.", title)
-            QMessageBox.critical(self, title, PDFOCRError.default_message)
+            self.report_error(PDFOCRError.default_message)
         return None
+
+    def report_error(self, message: str) -> None:
+        """Surface a failure without interrupting; an error toast waits to be read."""
+        self.notifications.notify(message, Severity.ERROR)
 
     # -- recent files -----------------------------------------------------
 
@@ -185,6 +192,7 @@ class MainWindow(QMainWindow):
             self.restoreState(state)
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
+        self.notifications.dismiss_all()
         self.save_session()
         super().closeEvent(event)
 
@@ -257,18 +265,18 @@ class MainWindow(QMainWindow):
         self.close()
 
     def request_ocr(self) -> None:
-        if self._require_document("Chạy OCR"):
+        if self._require_document():
             self.ocr_requested.emit(str(self._current_path))
 
     def request_export(self) -> None:
-        if self._require_document("Xuất tài liệu"):
+        if self._require_document():
             self.export_requested.emit(str(self._current_path))
 
-    def _require_document(self, title: str) -> bool:
+    def _require_document(self) -> bool:
         if self._current_path is not None:
             return True
-        QMessageBox.information(
-            self, title, "Vui lòng mở một tài liệu trước khi chạy OCR."
+        self.notifications.notify(
+            "Vui lòng mở một tài liệu trước khi chạy OCR.", Severity.WARNING
         )
         return False
 
