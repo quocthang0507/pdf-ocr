@@ -283,7 +283,7 @@
   - **Verify:** `pytest -m gui tests/gui/test_region_selection.py -v`
   - **Files:** `src/gui/components/document_canvas.py`, `tests/gui/test_region_selection.py`
 
-- [ ] **Task 6.9: Find & Replace trong Bộ so sánh lỗi**
+- [x] **Task 6.9: Find & Replace trong Bộ so sánh lỗi**
   - **Mục tiêu:** Cài đặt `src/gui/dialogs/find_replace.py` cung cấp hộp thoại `Ctrl+H` cho phép tìm kiếm và thay thế hàng loạt lỗi OCR lặp lại trong trình soạn thảo văn bản (ví dụ: thay tất cả `đuợc` thành `được`).
   - **Acceptance:** Find & Replace hoạt động chuẩn: tìm đúng, thay thế đúng, hỗ trợ Replace All; tích hợp Undo/Redo.
   - **Verify:** `pytest -m gui tests/gui/test_find_replace.py -v`

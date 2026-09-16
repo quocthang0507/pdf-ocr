@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 from src.constants import LOW_CONFIDENCE_COLOR, BlockType
 from src.core.models import BoundingBox, OCRBlock, OCRPage, OCRTable
 from src.gui.components.document_canvas import DocumentCanvas
+from src.gui.dialogs.find_replace import FindReplaceDialog
 from src.gui.dialogs.table_editor import TableEditorDialog
 
 BLOCK_SEPARATOR = "\n\n"
@@ -102,6 +103,7 @@ class ComparisonDock(QWidget):
         self._block_spans: tuple[TextSpan, ...] = ()
         self._page: OCRPage | None = None
         self.table_editor: TableEditorDialog | None = None
+        self.find_replace_dialog: FindReplaceDialog | None = None
         self._syncing = False
         self._shortcuts = self._create_shortcuts()
         self._build_layout()
@@ -135,7 +137,16 @@ class ComparisonDock(QWidget):
         redo = QShortcut(QKeySequence("Ctrl+Y"), self.editor)
         redo.setContext(Qt.ShortcutContext.WidgetShortcut)
         redo.activated.connect(self.editor.redo)
-        return (redo,)
+        find = QShortcut(QKeySequence("Ctrl+H"), self.editor)
+        find.setContext(Qt.ShortcutContext.WidgetShortcut)
+        find.activated.connect(self.open_find_replace)
+        return (redo, find)
+
+    def open_find_replace(self) -> None:
+        """Show the search panel, reusing the one already built for this editor."""
+        if self.find_replace_dialog is None:
+            self.find_replace_dialog = FindReplaceDialog(self.editor, self)
+        self.find_replace_dialog.show_for(self.editor.textCursor().selectedText())
 
     def editor_shortcuts(self) -> tuple[QShortcut, ...]:
         return self._shortcuts

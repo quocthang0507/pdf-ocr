@@ -46,7 +46,7 @@ def _mime_for(path: Path) -> QMimeData:
 def test_menu_bar_offers_the_standard_desktop_menus(window: MainWindow) -> None:
     titles = [action.text() for action in window.menuBar().actions()]
 
-    assert titles == ["&Tệp", "&Xem", "&OCR", "Công &cụ", "Trợ &giúp"]
+    assert titles == ["&Tệp", "&Sửa", "&Xem", "&OCR", "Công &cụ", "Trợ &giúp"]
 
 
 @pytest.mark.parametrize(

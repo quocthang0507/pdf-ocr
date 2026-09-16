@@ -216,6 +216,7 @@ class MainWindow(QMainWindow):
             "zoom_out": lambda: self.zoom_requested.emit(-1),
             "zoom_reset": lambda: self.zoom_requested.emit(0),
             "run_ocr": self.request_ocr,
+            "find_replace": self.open_find_replace,
             "settings": self.request_settings,
             "about": self.show_about,
         }
@@ -238,6 +239,10 @@ class MainWindow(QMainWindow):
         )
         if selected:
             self.open_folder(selected)
+
+    def open_find_replace(self) -> None:
+        """Open the bulk-correction panel for the transcript."""
+        self.comparison.open_find_replace()
 
     def set_region_mode(self, enabled: bool) -> None:
         """Turn region drawing on the page on or off."""
