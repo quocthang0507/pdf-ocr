@@ -107,3 +107,28 @@ def test_rejects_missing_source_or_page_mismatch(tmp_path: Path) -> None:
     mismatched = missing.with_updates(pages=(invalid_page,), source_path=str(source))
     with pytest.raises(ExportError, match="trang"):
         PDFExporter().export(mismatched, tmp_path / "mismatch.pdf")
+
+
+def _source_with_native_text(tmp_path: Path) -> Path:
+    """A page whose "Hello" is real text and whose right half is a bare scan."""
+    source = tmp_path / "hybrid.pdf"
+    document = pymupdf.open()
+    page = document.new_page(width=200, height=100)
+    page.insert_text((10, 26), "Hello", fontsize=14)
+    document.save(source)
+    document.close()
+    return source
+
+
+def test_text_the_source_already_carries_is_not_duplicated(tmp_path: Path) -> None:
+    """A second, invisible copy would double every search hit and every paste."""
+    source = _source_with_native_text(tmp_path)
+    destination = tmp_path / "no-duplicates.pdf"
+
+    PDFExporter().export(_ocr_document(source), destination)
+
+    exported = pymupdf.open(destination)
+    words = [entry[4] for entry in exported[0].get_text("words")]
+    exported.close()
+    assert words.count("Hello") == 1
+    assert words.count("world") == 1

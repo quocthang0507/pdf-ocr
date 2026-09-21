@@ -69,9 +69,14 @@ class PDFExporter(BaseExporter):
                 width=source_page.rect.width, height=source_page.rect.height
             )
             target_page.show_pdf_page(target_page.rect, source, source_index)
-            self._add_text_layer(target_page, ocr_page)
+            self._add_text_layer(target_page, ocr_page, _native_text_areas(source_page))
 
-    def _add_text_layer(self, target: pymupdf.Page, ocr_page: OCRPage) -> None:
+    def _add_text_layer(
+        self,
+        target: pymupdf.Page,
+        ocr_page: OCRPage,
+        native_areas: tuple[pymupdf.Rect, ...] = (),
+    ) -> None:
         font_name = "ocrfont"
         font_path = next((path for path in _FONT_CANDIDATES if path.is_file()), None)
         if font_path is None:
@@ -85,6 +90,9 @@ class PDFExporter(BaseExporter):
         for block in ocr_page.blocks:
             for line in block.lines:
                 for word in line.words:
+                    rect = self._scaled_rect(word.bbox, scale_x, scale_y, target.rect)
+                    if _already_searchable(rect, native_areas):
+                        continue
                     self._insert_word(target, word, scale_x, scale_y, font_name, font)
 
     @staticmethod
@@ -123,3 +131,16 @@ class PDFExporter(BaseExporter):
             min(page_rect.x1, bbox.x2 * scale_x),
             min(page_rect.y1, bbox.y2 * scale_y),
         )
+
+
+def _native_text_areas(page: pymupdf.Page) -> tuple[pymupdf.Rect, ...]:
+    """Where the source page already has real, selectable text."""
+    return tuple(pymupdf.Rect(entry[:4]) for entry in page.get_text("words"))
+
+
+def _already_searchable(
+    rect: pymupdf.Rect, native_areas: tuple[pymupdf.Rect, ...]
+) -> bool:
+    """Skip OCR words the source already carries, so nothing is found twice."""
+    centre = pymupdf.Point((rect.x0 + rect.x1) / 2, (rect.y0 + rect.y1) / 2)
+    return any(area.contains(centre) for area in native_areas)
