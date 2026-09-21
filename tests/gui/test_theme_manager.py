@@ -222,3 +222,65 @@ def test_status_colors_meet_wcag_contrast() -> None:
     assert status_error_color(dark=False).name() == STATUS_ERROR_LIGHT
     assert status_error_color(dark=True).name() == STATUS_ERROR_DARK
 
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_each_theme_styles_the_spin_box_buttons(
+    manager: StyleManager, theme: str
+) -> None:
+    sheet = manager.stylesheet(theme)
+
+    assert "QSpinBox::up-button" in sheet
+    assert "QSpinBox::down-button" in sheet
+
+
+_URL = re.compile(r"url\((?P<path>[^)]+)\)")
+
+
+def _body(sheet: str, selector: str) -> str:
+    for match in _rules(sheet):
+        if selector in [part.strip() for part in match.group("selector").split(",")]:
+            return match.group("body")
+    return ""
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_every_image_the_theme_uses_exists(manager: StyleManager, theme: str) -> None:
+    sheet = manager.stylesheet(theme)
+    paths = [match.group("path").strip("\"'") for match in _URL.finditer(sheet)]
+
+    assert paths, "Theme phải có biểu tượng cho checkbox và nút tăng giảm."
+    assert all(Path(path).is_absolute() and Path(path).is_file() for path in paths)
+
+
+@pytest.mark.parametrize(
+    "selector",
+    [
+        "QCheckBox::indicator:checked",
+        "QSpinBox::up-arrow",
+        "QSpinBox::down-arrow",
+        "QComboBox::down-arrow",
+    ],
+)
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_state_glyphs_are_drawn(
+    manager: StyleManager, theme: str, selector: str
+) -> None:
+    """Without a glyph a ticked box is a plain square and a spin box has no arrows."""
+    assert "image:" in _body(manager.stylesheet(theme), selector)
+
+
+@pytest.mark.parametrize("theme", ["light", "dark"])
+def test_a_disabled_default_button_no_longer_looks_clickable(
+    manager: StyleManager, theme: str
+) -> None:
+    sheet = manager.stylesheet(theme)
+    background = re.search(
+        r"background-color:\s*(#[0-9a-fA-F]{6})",
+        _body(sheet, "QPushButton:default:disabled"),
+    )
+    plain = re.search(
+        r"background-color:\s*(#[0-9a-fA-F]{6})", _body(sheet, "QPushButton:disabled")
+    )
+
+    assert background and plain
+    assert background.group(1).lower() == plain.group(1).lower()

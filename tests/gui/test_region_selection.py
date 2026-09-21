@@ -196,3 +196,40 @@ def test_the_window_command_toggles_region_drawing(qtbot, tmp_path) -> None:
     assert action.isCheckable() is True
     assert enabled is True
     assert window.comparison.region_mode() is False
+
+
+def test_a_long_region_result_does_not_squeeze_the_editor(dock: ComparisonDock) -> None:
+    dock.show_region_result("\n".join(f"Dòng {index}" for index in range(60)))
+
+    assert dock.region_label.maximumHeight() <= 160
+    assert dock.region_label.isReadOnly() is True
+
+
+def test_the_region_result_can_be_copied(dock: ComparisonDock, qapp) -> None:
+    dock.show_region_result("Tổng cộng: 150.000 đồng")
+
+    dock.region_copy_button.click()
+
+    assert qapp.clipboard().text() == "Tổng cộng: 150.000 đồng"
+
+
+def test_clearing_the_region_result_hides_the_panel(dock: ComparisonDock) -> None:
+    dock.show_region_result("Tạm thời")
+
+    dock.show_region_result("")
+
+    assert dock.region_panel.isVisibleTo(dock) is False
+
+
+def test_the_region_panel_leaves_the_editor_most_of_the_space(
+    dock: ComparisonDock, qtbot
+) -> None:
+    dock.resize(900, 800)
+    dock.show()
+    qtbot.waitExposed(dock)
+
+    dock.show_region_result("Một dòng")
+    qtbot.wait(20)
+
+    assert dock.region_panel.height() <= 220
+    assert dock.editor.height() > dock.region_panel.height()

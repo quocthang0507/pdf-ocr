@@ -24,7 +24,7 @@ from PySide6.QtWidgets import (
 from src.config import ConfigManager, Preferences
 from src.core.exceptions import PDFOCRError
 from src.gui.components.settings_dock import populate_device_combo
-from src.gui.i18n import LANGUAGE_NAMES, TranslationManager
+from src.gui.i18n import LANGUAGE_NAMES, TranslationManager, localise_buttons
 from src.gui.styles.style_manager import THEMES, StyleManager
 from src.services.device_service import detect_devices
 from src.services.weights_manager import ModelWeightsManager, migrate_weights
@@ -120,7 +120,7 @@ class SettingsDialog(QDialog):
     # -- layout -----------------------------------------------------------
 
     def _build_layout(self) -> None:
-        storage = QGroupBox("Thư mục mô hình & weights", self)
+        storage = QGroupBox("Thư mục mô hình và weights", self)
         storage_layout = QVBoxLayout(storage)
         storage_layout.addLayout(
             _browse_row(self, self.weights_edit, self.browse_weights_dir)
@@ -148,9 +148,12 @@ class SettingsDialog(QDialog):
             "Đầu ra", _browse_widget(self, self.output_edit, self.browse_output_dir)
         )
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=self,
+        buttons = localise_buttons(
+            QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok
+                | QDialogButtonBox.StandardButton.Cancel,
+                parent=self,
+            )
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)

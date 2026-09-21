@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 
 from src.core.models import OCRPage
 from src.gui.components.status_bar import PAUSE_LABEL, RESUME_LABEL, format_duration
+from src.gui.i18n import localise_buttons
 from src.gui.styles.style_manager import (
     status_accent_color,
     status_error_color,
@@ -108,7 +109,9 @@ class BatchDialog(QDialog):
         controls.addWidget(self.pause_button)
         controls.addWidget(self.cancel_button)
 
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=self)
+        buttons = localise_buttons(
+            QDialogButtonBox(QDialogButtonBox.StandardButton.Close, parent=self)
+        )
         buttons.rejected.connect(self.close)
 
         layout = QVBoxLayout(self)

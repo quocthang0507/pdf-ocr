@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.exceptions import PDFOCRError, WeightsError
+from src.gui.i18n import localise_buttons
 from src.services.weights_manager import (
     DOWNLOAD_BACKOFF_SECONDS,
     DownloadProgress,
@@ -137,7 +138,9 @@ class DownloadDialog(QDialog):
         self._task.completed.connect(self._on_completed)
 
     def _build_layout(self) -> None:
-        buttons = QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, parent=self)
+        buttons = localise_buttons(
+            QDialogButtonBox(QDialogButtonBox.StandardButton.Cancel, parent=self)
+        )
         buttons.rejected.connect(self.cancel)
         layout = QVBoxLayout(self)
         layout.setContentsMargins(16, 16, 16, 16)

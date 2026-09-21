@@ -32,6 +32,10 @@ LOW_CONFIDENCE_COLOR = "#fde68a"
 #: Outline colour of the block or region the user is currently working on.
 SELECTION_COLOR = "#dc2626"
 
+#: Tool bar icon tint per theme. The platform draws icons dark, which reads
+#: well on a light bar, so only the dark theme needs recolouring.
+ICON_COLORS: dict[str, str | None] = {"light": None, "dark": "#e6ebf2"}
+
 #: Interface languages, keyed by code; Vietnamese is the source language.
 DEFAULT_LANGUAGE = "vi"
 LANGUAGE_NAMES: dict[str, str] = {

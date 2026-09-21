@@ -48,6 +48,8 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
     ActionSpec("zoom_in", "&Phóng to", "Ctrl++", "Phóng to trang tài liệu."),
     ActionSpec("zoom_out", "Thu &nhỏ", "Ctrl+-", "Thu nhỏ trang tài liệu."),
     ActionSpec("zoom_reset", "Vừa &khung", "Ctrl+0", "Hiển thị vừa khung cửa sổ."),
+    ActionSpec("previous_page", "Trang &trước", "PgUp", "Xem trang phía trước."),
+    ActionSpec("next_page", "Trang &sau", "PgDown", "Xem trang tiếp theo."),
     ActionSpec("run_ocr", "&Chạy OCR", "F5", "Nhận diện văn bản của tài liệu đang mở."),
     ActionSpec(
         "select_region",
@@ -83,7 +85,10 @@ MENU_LAYOUT: tuple[tuple[str, tuple[str, ...]], ...] = (
         ),
     ),
     ("&Sửa", ("find_replace",)),
-    ("&Xem", ("zoom_in", "zoom_out", "zoom_reset")),
+    (
+        "&Xem",
+        ("zoom_in", "zoom_out", "zoom_reset", SEPARATOR, "previous_page", "next_page"),
+    ),
     ("&OCR", ("run_ocr", "select_region")),
     ("Công &cụ", ("settings",)),
     ("Trợ &giúp", ("about",)),

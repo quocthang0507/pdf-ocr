@@ -307,6 +307,18 @@
   - **Verify:** `pytest -m gui tests/gui/test_i18n.py -v`
   - **Files:** `src/gui/i18n.py`, `src/gui/dialogs/settings_dialog.py`, `tests/gui/test_i18n.py`
 
+- [x] **Task 6.13: Nối đầy đủ chức năng vào cửa sổ chính (Main Window Wiring)**
+  - **Mục tiêu:** Mỗi tài liệu có một `DocumentSession` (`src/gui/document_session.py`) giữ trang đã render (bộ đệm nhỏ), kết quả OCR theo trang và trang hiện tại. Kết quả hiển thị ngay bên cạnh trang ở đúng hệ tọa độ; chỉnh sửa trong Bộ so sánh lỗi được gộp ngược vào mô hình trang (`src/core/transcript.py`) để tệp xuất có nội dung đã sửa. Lệnh Xuất tài liệu mở hộp thoại lưu với mọi định dạng đã đăng ký và ghi tệp dưới nền (`src/workers/export_worker.py`). Mở thư mục chạy hàng loạt mọi tài liệu hỗ trợ, bỏ qua tệp hỏng khi xem trước. Chọn vùng OCR lấy lớp chữ PDF nếu có, nếu không thì nhận diện vùng cắt dưới nền (`src/workers/region_worker.py`). Đóng cửa sổ khi đang chạy hàng loạt sẽ hủy và chờ trang đang xử lý.
+  - **Acceptance:** Mở tệp thấy ngay trang và chuyển trang được (PgUp/PgDn); OCR xong thấy văn bản và khung khối; sửa văn bản rồi xuất thì tệp chứa nội dung đã sửa; xuất lỗi báo thông báo thân thiện; thư mục trống hoặc tệp hỏng không làm dừng ứng dụng; đóng cửa sổ giữa chừng không gây lỗi.
+  - **Verify:** `pytest tests/gui/test_main_window.py tests/unit/test_document_session.py tests/unit/test_transcript.py tests/unit/test_export_worker.py tests/unit/test_region_worker.py -v`
+  - **Files:** `src/gui/main_window.py`, `src/gui/document_session.py`, `src/core/transcript.py`, `src/workers/export_worker.py`, `src/workers/region_worker.py`, `src/gui/components/comparison_dock.py`, `tests/gui/test_main_window.py`, `tests/unit/test_document_session.py`, `tests/unit/test_transcript.py`, `tests/unit/test_export_worker.py`, `tests/unit/test_region_worker.py`
+
+- [x] **Task 6.14: Hoàn thiện chi tiết giao diện (UI Polish)**
+  - **Mục tiêu:** Bổ sung biểu tượng SVG cho checkbox đã chọn, nút tăng/giảm và mũi tên ô chọn ở cả hai theme (`src/gui/styles/icons`, đường dẫn được `StyleManager` điền lúc nạp theme); nút mặc định khi vô hiệu trông giống nút vô hiệu thường; khung kết quả vùng chọn có tiêu đề, nút Sao chép và giới hạn chiều cao; chữ trong toast không bị viền khung; toast không che thanh trạng thái; nhãn nút hộp thoại chuẩn bằng tiếng Việt; mọi lệnh có bản dịch tiếng Anh.
+  - **Acceptance:** Ảnh chụp giao diện sáng và tối với tệp PDF thật hiển thị đúng dấu tích, mũi tên, trạng thái nút và thông báo; mọi ảnh mà theme dùng đều tồn tại khi đóng gói.
+  - **Verify:** `pytest tests/gui/test_theme_manager.py tests/gui/test_notifications.py tests/gui/test_region_selection.py tests/gui/test_i18n.py -v`
+  - **Files:** `src/gui/styles/*.qss`, `src/gui/styles/icons/*.svg`, `src/gui/styles/style_manager.py`, `src/gui/components/notifications.py`, `src/gui/i18n.py`, `packaging/pdf-ocr.spec`, `pyproject.toml`
+
 ---
 
 ### Giai Đoạn 7: Xử Lý Đa Luồng & Quét Hàng Loạt (Batch Processing & Concurrency)

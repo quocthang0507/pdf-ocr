@@ -9,6 +9,7 @@ from src.workers.signals import BatchProgress
 
 _SECONDS_PER_MINUTE = 60
 _SECONDS_PER_HOUR = 3600
+CONTROL_HEIGHT = 22
 PAUSE_LABEL = "Tạm dừng"
 RESUME_LABEL = "Tiếp tục"
 
@@ -35,12 +36,14 @@ class BatchStatusBar(QStatusBar):
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
         self.setObjectName("batch_status_bar")
+        self.setSizeGripEnabled(False)
         self.count_label = _label(self, "batch_counts")
         self.eta_label = _label(self, "batch_eta")
         self.progress_bar = QProgressBar(self)
         self.progress_bar.setObjectName("batch_progress")
         self.progress_bar.setRange(0, 100)
         self.progress_bar.setMaximumWidth(220)
+        self.progress_bar.setFixedHeight(12)
         self.pause_button = _button(self, PAUSE_LABEL, "batch_pause")
         self.cancel_button = _button(self, "Hủy", "batch_cancel")
         self._paused = False
@@ -96,6 +99,8 @@ def _label(parent: QWidget, name: str) -> QLabel:
 
 
 def _button(parent: QWidget, text: str, name: str) -> QPushButton:
+    """Keep controls short enough that the status bar does not clip them."""
     button = QPushButton(text, parent)
     button.setObjectName(name)
+    button.setFixedHeight(CONTROL_HEIGHT)
     return button

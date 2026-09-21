@@ -68,6 +68,30 @@
         <translation>Fit the whole page in the window.</translation>
     </message>
     <message>
+        <source>Trang &amp;trước</source>
+        <translation>&amp;Previous page</translation>
+    </message>
+    <message>
+        <source>Xem trang phía trước.</source>
+        <translation>Show the previous page.</translation>
+    </message>
+    <message>
+        <source>Trang &amp;sau</source>
+        <translation>&amp;Next page</translation>
+    </message>
+    <message>
+        <source>Xem trang tiếp theo.</source>
+        <translation>Show the next page.</translation>
+    </message>
+    <message>
+        <source>Lịch sử &amp;mở tệp…</source>
+        <translation>Document &amp;history…</translation>
+    </message>
+    <message>
+        <source>Xem và quản lý toàn bộ lịch sử các tệp đã mở.</source>
+        <translation>Browse and manage every document you have opened.</translation>
+    </message>
+    <message>
         <source>&amp;Chạy OCR</source>
         <translation>&amp;Run OCR</translation>
     </message>

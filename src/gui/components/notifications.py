@@ -101,6 +101,7 @@ class Toast(QFrame):
         return bg.lightness() < 128
 
     def _apply_style(self) -> None:
+        """Paint the card itself so it matches the theme even before one loads."""
         accent = self.accent_color().name()
         if self._is_dark():
             bg = "#1a212b"
@@ -123,9 +124,10 @@ class Toast(QFrame):
             f" border-radius: 8px; }}"
             f" #toast_icon {{"
             f" color: {accent}; font-weight: 700; font-size: 14px;"
-            f" background: transparent; }}"
+            f" background: transparent; border: none; }}"
             f" #toast_message {{"
-            f" color: {fg}; font-size: 13px; background: transparent; }}"
+            f" color: {fg}; font-size: 13px; background: transparent;"
+            f" border: none; }}"
             f" #toast_close {{"
             f" background: transparent; border: none; color: {close_fg};"
             f" font-size: 13px; font-weight: bold; border-radius: 4px;"
@@ -185,7 +187,7 @@ class NotificationCenter(QObject):
 
     def reposition(self) -> None:
         """Stack the cards upward from the bottom-right corner of the host."""
-        bottom = self._host.height() - TOAST_MARGIN
+        bottom = self._host.height() - TOAST_MARGIN - self._reserved_bottom()
         for toast in reversed(self._toasts):
             toast.adjustSize()
             left = self._host.width() - toast.width() - TOAST_MARGIN
@@ -193,6 +195,17 @@ class NotificationCenter(QObject):
             toast.move(max(left, TOAST_MARGIN), max(bottom, TOAST_MARGIN))
             toast.raise_()
             bottom -= TOAST_SPACING
+
+    def _reserved_bottom(self) -> int:
+        """Never cover the window's status bar; its controls must stay clickable."""
+        status_bar = getattr(self._host, "statusBar", None)
+        if status_bar is None:
+            return 0
+        bar = status_bar()
+        if bar is None or not bar.isVisibleTo(self._host):
+            return 0
+        # isVisibleTo, not isVisible: the window may not be on screen yet.
+        return int(bar.sizeHint().height())
 
     def eventFilter(  # noqa: N802 - Qt override
         self, watched: QObject, event: QEvent

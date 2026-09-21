@@ -21,6 +21,8 @@ datas = [
     (str(PROJECT_ROOT / "src" / "gui" / "styles" / "dark_theme.qss"), "src/gui/styles"),
     (str(PROJECT_ROOT / "src" / "gui" / "styles" / "light_theme.qss"), "src/gui/styles"),
 ]
+icons = PROJECT_ROOT / "src" / "gui" / "styles" / "icons"
+datas += [(str(path), "src/gui/styles/icons") for path in icons.glob("*.svg")]
 translations = PROJECT_ROOT / "src" / "gui" / "translations"
 datas += [(str(path), "src/gui/translations") for path in translations.glob("*.qm")]
 

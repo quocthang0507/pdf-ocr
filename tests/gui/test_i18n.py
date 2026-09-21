@@ -129,3 +129,53 @@ def test_the_window_retranslates_without_a_restart(
     assert vietnamese == "&Mở tệp…"
     assert window.command_actions["open_file"].text() == "&Open file…"
     assert [action.text() for action in window.menuBar().actions()][0] == "&File"
+
+
+def test_standard_dialog_buttons_are_labelled_in_vietnamese(qtbot) -> None:
+    """Qt ships no Vietnamese catalogue, so OK and Cancel would stay English."""
+    from PySide6.QtWidgets import QDialogButtonBox
+
+    from src.gui.i18n import localise_buttons
+
+    buttons = localise_buttons(
+        QDialogButtonBox(
+            QDialogButtonBox.StandardButton.Ok
+            | QDialogButtonBox.StandardButton.Cancel
+            | QDialogButtonBox.StandardButton.Close
+        )
+    )
+    qtbot.addWidget(buttons)
+
+    labels = {button.text() for button in buttons.buttons()}
+    assert labels == {"Đồng ý", "Hủy", "Đóng"}
+
+
+def test_group_box_titles_do_not_swallow_an_ampersand(qtbot, tmp_path) -> None:
+    """An & in a Qt title becomes a mnemonic and disappears from the label."""
+    from src.config import ConfigManager
+    from src.gui.dialogs.settings_dialog import SettingsDialog
+
+    dialog = SettingsDialog(
+        config=ConfigManager(tmp_path / "config", use_qsettings=False)
+    )
+    qtbot.addWidget(dialog)
+
+    from PySide6.QtWidgets import QGroupBox
+
+    titles = [box.title() for box in dialog.findChildren(QGroupBox)]
+    assert titles, "Hộp thoại cài đặt phải có các nhóm tùy chọn."
+    assert all("&" not in title for title in titles)
+
+
+def test_every_command_has_an_english_label(manager: TranslationManager) -> None:
+    """A command added without a translation would stay Vietnamese in English."""
+    from src.gui.components.menu_bar import ACTION_SPECS
+
+    manager.apply("en")
+
+    untranslated = [
+        spec.text
+        for spec in ACTION_SPECS
+        if QCoreApplication.translate(MENU_CONTEXT, spec.text) == spec.text
+    ]
+    assert untranslated == []

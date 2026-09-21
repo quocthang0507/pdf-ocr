@@ -27,6 +27,15 @@ STATUS_MUTED_LIGHT = "#5a6474"
 STATUS_MUTED_DARK = "#9aa6b8"
 
 
+ICONS_PLACEHOLDER = "@ICONS@"
+
+
+def icons_dir() -> Path:
+    """Glyphs the themes draw; Qt resolves url() against the working directory,
+    so the sheets name them by absolute path, filled in when a theme loads."""
+    return Path(__file__).with_name("icons")
+
+
 def _theme_path(name: str) -> Path:
     """Resolve a bundled stylesheet next to this module, frozen builds included."""
     return Path(__file__).with_name(f"{name}_theme.qss")
@@ -79,10 +88,11 @@ class StyleManager:
         """Read one theme from disk; an absent file yields the platform default."""
         resolved = self.resolve(name)
         try:
-            return _theme_path(resolved).read_text(encoding="utf-8")
+            sheet = _theme_path(resolved).read_text(encoding="utf-8")
         except OSError:
             logger.warning("Không đọc được tệp giao diện '{}'.", resolved)
             return ""
+        return sheet.replace(ICONS_PLACEHOLDER, icons_dir().as_posix())
 
     def apply(self, name: str) -> str:
         """Repaint the whole application and report the theme now in use."""
@@ -135,4 +145,3 @@ def status_muted_color(dark: bool | None = None) -> QColor:
     """Theme-aware muted/waiting color (slate)."""
     is_dark = is_dark_theme() if dark is None else dark
     return QColor(STATUS_MUTED_DARK if is_dark else STATUS_MUTED_LIGHT)
-

@@ -9,6 +9,7 @@ from PySide6.QtCore import QMimeData, QPoint, QPointF, QSettings, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
 
 from src.core.exceptions import DocumentLoadError
+from src.core.models import BoundingBox
 from src.gui.components.menu_bar import MAX_RECENT_FILES
 from src.gui.main_window import MainWindow
 
@@ -29,9 +30,14 @@ def window(qtbot, settings: QSettings) -> MainWindow:
     return main_window
 
 
-def _pdf(tmp_path: Path, name: str = "hoa-don.pdf") -> Path:
+def _pdf(tmp_path: Path, name: str = "hoa-don.pdf", pages: int = 1) -> Path:
+    import pymupdf
+
     document = tmp_path / name
-    document.write_bytes(b"%PDF-1.4 fake")
+    with pymupdf.open() as pdf:
+        for number in range(1, pages + 1):
+            pdf.new_page(width=200, height=100).insert_text((20, 50), f"Trang {number}")
+        pdf.save(document)
     return document
 
 
@@ -350,3 +356,455 @@ def test_document_history_action_opens_dialog(
     assert opened is True
 
 
+def test_tool_bar_icons_follow_the_theme(window: MainWindow) -> None:
+    """Platform icons are drawn dark and would vanish on a dark tool bar."""
+    action = window.command_actions["open_file"]
+
+    window.apply_theme_colors("light")
+    light = action.icon().pixmap(18, 18).toImage()
+    window.apply_theme_colors("dark")
+    dark = action.icon().pixmap(18, 18).toImage()
+
+    assert not light.isNull() and not dark.isNull()
+    assert light != dark
+
+
+def test_the_options_dock_defaults_to_the_vietnamese_engine(
+    window: MainWindow,
+) -> None:
+    assert window.settings_dock.engine_combo.currentData() == "vietocr"
+
+
+# -- page preview and navigation ---------------------------------------------
+
+
+def test_opening_a_document_shows_its_first_page(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    window.open_path(_pdf(tmp_path, pages=3))
+
+    assert not window.comparison.canvas.page_size().isEmpty()
+    assert window.comparison.page_label.text() == "Trang 1 / 3"
+
+
+def test_the_pages_can_be_browsed_in_order(window: MainWindow, tmp_path: Path) -> None:
+    window.open_path(_pdf(tmp_path, pages=3))
+
+    window.command_actions["next_page"].trigger()
+    window.command_actions["next_page"].trigger()
+
+    assert window.comparison.page_label.text() == "Trang 3 / 3"
+    assert window.command_actions["next_page"].isEnabled() is False
+    assert window.command_actions["previous_page"].isEnabled() is True
+
+
+def test_page_commands_are_off_until_a_document_is_open(window: MainWindow) -> None:
+    assert window.command_actions["next_page"].isEnabled() is False
+    assert window.command_actions["previous_page"].isEnabled() is False
+    assert window.comparison.page_label.text() == "Trang 0 / 0"
+
+
+def test_page_commands_use_the_page_keys(window: MainWindow) -> None:
+    assert window.command_actions["next_page"].shortcut() == QKeySequence("PgDown")
+    assert window.command_actions["previous_page"].shortcut() == QKeySequence("PgUp")
+
+
+def test_a_corrupt_document_is_refused_without_replacing_the_open_one(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    good = _pdf(tmp_path, "tot.pdf")
+    window.open_path(good)
+    broken = tmp_path / "hong.pdf"
+    broken.write_bytes(b"%PDF-1.4 hong")
+
+    window.open_path(broken)
+
+    assert window.current_path == good.resolve()
+    assert any(
+        toast.severity.name == "ERROR"
+        for toast in window.notifications.visible_toasts()
+    )
+
+
+def test_closing_the_window_during_a_batch_stops_it_cleanly(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    import time
+
+    from src.core.models import OCRPage
+
+    class SlowSession:
+        def page_count(self, _path: object) -> int:
+            return 5
+
+        def recognise(self, _path: object, number: int) -> OCRPage:
+            time.sleep(0.05)
+            return OCRPage(page_number=number, width=10, height=10)
+
+        def close(self) -> None:
+            pass
+
+    class SlowPipeline:
+        def open_page_session(self, **_options: object) -> SlowSession:
+            return SlowSession()
+
+    window = MainWindow(settings=settings, pipeline=SlowPipeline())
+    qtbot.addWidget(window)
+    window.open_path(_pdf(tmp_path, pages=5))
+    window.command_actions["run_ocr"].trigger()
+    batch = window.batch_dialog
+    assert batch is not None
+
+    window.close()
+
+    assert batch.manager.is_running is False
+
+
+# -- recognised results -------------------------------------------------------
+
+
+class _RecordingSession:
+    """Recognises instantly, returning one known word per page."""
+
+    def __init__(self, pages: int) -> None:
+        self.pages = pages
+
+    def page_count(self, _path: object) -> int:
+        return self.pages
+
+    def recognise(self, _path: object, number: int):
+        from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRWord
+
+        box = BoundingBox(20, 20, 200, 60)
+        word = OCRWord(f"kết-quả-{number}", box, 0.5 if number == 1 else 0.99)
+        line = OCRLine(words=(word,), bbox=box)
+        return OCRPage(
+            page_number=number,
+            width=400,
+            height=200,
+            blocks=(OCRBlock(lines=(line,), bbox=box),),
+            dpi=144,
+        )
+
+    def close(self) -> None:
+        pass
+
+
+def _recognised_window(
+    qtbot, settings: QSettings, tmp_path: Path, pages: int = 2
+) -> MainWindow:
+    class Pipeline:
+        def open_page_session(self, **_options: object) -> _RecordingSession:
+            return _RecordingSession(pages)
+
+    window = MainWindow(settings=settings, pipeline=Pipeline())
+    qtbot.addWidget(window)
+    window.open_path(_pdf(tmp_path, pages=pages))
+    window.command_actions["run_ocr"].trigger()
+    batch = window.batch_dialog
+    assert batch is not None
+    assert batch.manager.wait_for_completion(10_000)
+    return window
+
+
+def test_recognised_text_appears_beside_the_page(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+
+    assert window.comparison.transcript() == "kết-quả-1"
+    assert len(window.comparison.canvas.block_items()) == 1
+
+
+def test_each_page_shows_its_own_result(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+
+    window.command_actions["next_page"].trigger()
+
+    assert window.comparison.transcript() == "kết-quả-2"
+
+
+def test_the_page_image_matches_the_result_coordinates(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+
+    size = window.comparison.canvas.page_size()
+    assert (size.width(), size.height()) == (400, 200)
+
+
+def test_edits_in_the_transcript_are_kept_for_export(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+
+    window.comparison.editor.setPlainText("đã-sửa")
+
+    session = window.document_session
+    assert session is not None
+    result = session.result(1)
+    assert result is not None
+    assert result.blocks[0].lines[0].words[0].text == "đã-sửa"
+
+
+def test_edits_survive_moving_to_another_page_and_back(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+    window.comparison.editor.setPlainText("đã-sửa")
+
+    window.command_actions["next_page"].trigger()
+    window.command_actions["previous_page"].trigger()
+
+    assert window.comparison.transcript() == "đã-sửa"
+
+
+def test_a_finished_run_reports_how_many_pages_were_recognised(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+
+    assert "Đã nhận diện 2/2 trang" in " ".join(_messages(window))
+
+
+# -- export -------------------------------------------------------------------
+
+
+def _choose_save_path(monkeypatch: pytest.MonkeyPatch, path: Path, chosen: str):
+    import src.gui.main_window as main_window_module
+
+    offered: dict[str, object] = {}
+
+    def fake_dialog(_parent, _title, directory, filters, selected):
+        offered.update(directory=directory, filters=filters, selected=selected)
+        return (str(path), chosen) if path != Path("") else ("", "")
+
+    monkeypatch.setattr(
+        main_window_module.QFileDialog, "getSaveFileName", staticmethod(fake_dialog)
+    )
+    return offered
+
+
+def test_exporting_writes_the_recognised_and_edited_text(
+    qtbot, settings: QSettings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+    window.comparison.editor.setPlainText("đã-sửa")
+    target = tmp_path / "ket-qua.md"
+    _choose_save_path(monkeypatch, target, "Markdown (*.md *.markdown)")
+
+    with qtbot.waitSignal(window.export_completed, timeout=10_000) as blocker:
+        window.command_actions["export"].trigger()
+
+    assert blocker.args == [str(target.resolve())]
+    content = target.read_text(encoding="utf-8")
+    assert "đã-sửa" in content and "kết-quả-2" in content
+    assert any("ket-qua.md" in message for message in _messages(window))
+
+
+def test_the_save_dialog_suggests_a_name_beside_the_document(
+    qtbot, settings: QSettings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+    offered = _choose_save_path(monkeypatch, Path(""), "")
+
+    window.command_actions["export"].trigger()
+
+    assert offered["directory"] == str(tmp_path.resolve() / "hoa-don.docx")
+    assert str(offered["selected"]).startswith("Microsoft Word")
+
+
+def test_exporting_before_recognition_asks_to_run_ocr_first(
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window.open_path(_pdf(tmp_path))
+    offered = _choose_save_path(monkeypatch, tmp_path / "x.docx", "")
+
+    window.command_actions["export"].trigger()
+
+    assert offered == {}
+    assert _messages(window)[-1] == "Chưa có kết quả nhận diện. Hãy chạy OCR trước."
+
+
+def test_a_failed_export_is_reported(
+    qtbot, settings: QSettings, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+    _choose_save_path(monkeypatch, tmp_path / "khong-co" / "x.txt", "")
+
+    with qtbot.waitSignal(window.export_failed, timeout=10_000):
+        window.command_actions["export"].trigger()
+
+    assert "Thư mục đích không tồn tại." in _messages(window)
+
+
+# -- folders --------------------------------------------------------------------
+
+
+def _folder_window(qtbot, settings: QSettings) -> MainWindow:
+    class Pipeline:
+        def open_page_session(self, **_options: object) -> _RecordingSession:
+            return _RecordingSession(1)
+
+    window = MainWindow(settings=settings, pipeline=Pipeline())
+    qtbot.addWidget(window)
+    return window
+
+
+def test_opening_a_folder_recognises_every_supported_document(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    folder = tmp_path / "ho-so"
+    folder.mkdir()
+    first = _pdf(folder, "a.pdf")
+    second = _pdf(folder, "b.pdf")
+    (folder / "ghi-chu.txt").write_text("bỏ qua", encoding="utf-8")
+    window = _folder_window(qtbot, settings)
+
+    window.open_folder(folder)
+
+    batch = window.batch_dialog
+    assert batch is not None
+    assert batch.manager.wait_for_completion(10_000)
+    assert window.current_path == first.resolve()
+    assert batch.manager.pages_per_document() == {
+        str(first.resolve()): 1,
+        str(second.resolve()): 1,
+    }
+
+
+def test_results_for_other_documents_are_ready_when_opened(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    folder = tmp_path / "ho-so"
+    folder.mkdir()
+    _pdf(folder, "a.pdf")
+    second = _pdf(folder, "b.pdf")
+    window = _folder_window(qtbot, settings)
+    window.open_folder(folder)
+    batch = window.batch_dialog
+    assert batch is not None
+    assert batch.manager.wait_for_completion(10_000)
+
+    window.open_path(second)
+
+    assert window.comparison.transcript() == "kết-quả-1"
+
+
+def test_a_folder_without_documents_is_reported(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    (tmp_path / "trong").mkdir()
+
+    window.open_folder(tmp_path / "trong")
+
+    assert window.batch_dialog is None
+    assert _messages(window) == ["Thư mục không có tài liệu nào được hỗ trợ."]
+
+
+def test_a_corrupt_document_in_a_folder_does_not_stop_the_others(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    folder = tmp_path / "ho-so"
+    folder.mkdir()
+    (folder / "a-hong.pdf").write_bytes(b"%PDF-1.4 hong")
+    good = _pdf(folder, "b.pdf")
+    window = _folder_window(qtbot, settings)
+
+    window.open_folder(folder)
+
+    assert window.current_path == good.resolve()
+    assert window.batch_dialog is not None
+
+
+# -- region OCR -----------------------------------------------------------------
+
+
+def test_a_region_over_real_text_reads_the_text_layer(
+    qtbot, window: MainWindow, tmp_path: Path
+) -> None:
+    window.open_path(_pdf(tmp_path))
+    # At the default 300 DPI "Trang 1" (baseline 50 pt) sits near y = 170..215 px.
+    region = BoundingBox(40, 120, 700, 260)
+
+    with qtbot.waitSignal(window.region_recognised) as blocker:
+        window.comparison.canvas.region_selected.emit(region)
+
+    assert blocker.args == ["Trang 1"]
+    assert window.comparison.region_result() == "Trang 1"
+
+
+def test_a_region_on_a_scan_is_recognised_in_the_background(
+    qtbot, window: MainWindow, tmp_path: Path
+) -> None:
+    import numpy as np
+
+    from src.core.models import OCRBlock, OCRLine, OCRPage, OCRWord
+    from src.engines.base_engine import BaseOCREngine, ConfigField
+    from src.engines.engine_registry import EngineRegistry
+
+    class ScanEngine(BaseOCREngine):
+        CONFIG_SCHEMA = {"device": ConfigField("cpu", lambda v: isinstance(v, str))}
+
+        def _load_model(self) -> None:
+            pass
+
+        def _unload_model(self) -> None:
+            pass
+
+        def _recognize(self, image: object, page_number: int) -> OCRPage:
+            assert isinstance(image, np.ndarray)
+            box = BoundingBox(0, 0, image.shape[1], image.shape[0])
+            line = OCRLine(words=(OCRWord("chữ-quét", box),), bbox=box)
+            return OCRPage(
+                page_number=page_number,
+                width=float(image.shape[1]),
+                height=float(image.shape[0]),
+                blocks=(OCRBlock(lines=(line,), bbox=box),),
+            )
+
+    snapshot = EngineRegistry.snapshot()
+    EngineRegistry.register("scan-probe", "Quét", "Thử")(ScanEngine)
+    try:
+        blank = tmp_path / "quet.pdf"
+        import pymupdf
+
+        with pymupdf.open() as pdf:
+            pdf.new_page(width=200, height=100)
+            pdf.save(blank)
+        window.open_path(blank)
+        window.settings_dock.options_changed.emit(
+            {"engine_id": "scan-probe", "device": "cpu", "dpi": 300}
+        )
+
+        with qtbot.waitSignal(window.region_recognised, timeout=10_000) as blocker:
+            window.comparison.canvas.region_selected.emit(BoundingBox(10, 10, 300, 200))
+    finally:
+        EngineRegistry.restore(snapshot)
+
+    assert blocker.args == ["chữ-quét"]
+    assert window.comparison.region_result() == "chữ-quét"
+
+
+def test_a_failed_region_recognition_is_reported(
+    qtbot, window: MainWindow, tmp_path: Path
+) -> None:
+    import pymupdf
+
+    blank = tmp_path / "quet.pdf"
+    with pymupdf.open() as pdf:
+        pdf.new_page(width=200, height=100)
+        pdf.save(blank)
+    window.open_path(blank)
+    window.settings_dock.options_changed.emit(
+        {"engine_id": "khong-ton-tai", "device": "cpu", "dpi": 300}
+    )
+
+    with qtbot.waitSignal(window.region_failed, timeout=10_000):
+        window.comparison.canvas.region_selected.emit(BoundingBox(10, 10, 300, 200))
+
+    assert window.comparison.region_result() == ""
+    toasts = window.notifications.visible_toasts()
+    assert any(toast.severity.name == "ERROR" for toast in toasts)

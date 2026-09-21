@@ -12,8 +12,11 @@ import numpy as np
 from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QShortcut, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
+    QApplication,
+    QFrame,
     QHBoxLayout,
     QLabel,
+    QPlainTextEdit,
     QPushButton,
     QSplitter,
     QStyle,
@@ -24,13 +27,14 @@ from PySide6.QtWidgets import (
 
 from src.constants import LOW_CONFIDENCE_COLOR, BlockType
 from src.core.models import BoundingBox, OCRBlock, OCRPage, OCRTable
+from src.core.transcript import BLOCK_SEPARATOR
 from src.gui.components.document_canvas import DocumentCanvas
 from src.gui.dialogs.find_replace import FindReplaceDialog
 from src.gui.dialogs.table_editor import TableEditorDialog
 
-BLOCK_SEPARATOR = "\n\n"
 _MIN_PAGE_PANE_WIDTH = 240
 _EVEN_SPLIT = 600
+_REGION_RESULT_MAX_HEIGHT = 140
 _ZOOM_ACTIONS = {1: "zoom_in", -1: "zoom_out", 0: "reset_zoom"}
 
 
@@ -122,10 +126,18 @@ class ComparisonDock(QWidget):
         self.editor.setAcceptRichText(False)
         self.editor.setUndoRedoEnabled(True)
         self.editor.setPlaceholderText("Kết quả nhận diện sẽ hiển thị tại đây.")
-        self.region_label = QLabel(self)
+        self.region_panel = QFrame(self)
+        self.region_panel.setObjectName("region_panel")
+        self.region_title = QLabel("Kết quả vùng chọn", self.region_panel)
+        self.region_title.setObjectName("region_title")
+        self.region_copy_button = QPushButton("Sao chép", self.region_panel)
+        self.region_copy_button.setObjectName("region_copy")
+        self.region_label = QPlainTextEdit(self.region_panel)
         self.region_label.setObjectName("region_result")
-        self.region_label.setWordWrap(True)
-        self.region_label.hide()
+        self.region_label.setReadOnly(True)
+        # A long selection scrolls inside the panel instead of hiding the editor.
+        self.region_label.setMaximumHeight(_REGION_RESULT_MAX_HEIGHT)
+        self.region_panel.hide()
         self._block_spans: tuple[TextSpan, ...] = ()
         self._page: OCRPage | None = None
         self._current_page = 0
@@ -185,9 +197,17 @@ class ComparisonDock(QWidget):
         text_pane = QWidget(self)
         text_layout = QVBoxLayout(text_pane)
         text_layout.setContentsMargins(0, 0, 0, 0)
-        text_layout.addWidget(self.editor)
-        text_layout.addWidget(self.region_label)
-
+        text_layout.addWidget(self.editor, 1)
+        text_layout.addWidget(self.region_panel)
+        header = QHBoxLayout()
+        header.addWidget(self.region_title)
+        header.addStretch(1)
+        header.addWidget(self.region_copy_button)
+        panel_layout = QVBoxLayout(self.region_panel)
+        panel_layout.setContentsMargins(12, 10, 12, 12)
+        panel_layout.addLayout(header)
+        panel_layout.addWidget(self.region_label)
+        self.region_copy_button.clicked.connect(self.copy_region_result)
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.setObjectName("comparison_splitter")
         splitter.addWidget(canvas_pane)
@@ -259,7 +279,7 @@ class ComparisonDock(QWidget):
         with self._suspend_sync():
             self.editor.setPlainText(text)
             self.editor.setExtraSelections([])
-        self.region_label.hide()
+        self.region_panel.hide()
 
     def set_page(self, page: OCRPage, image: np.ndarray) -> None:
         """Show one recognised page beside the image it was recognised from."""
@@ -273,7 +293,7 @@ class ComparisonDock(QWidget):
         with self._suspend_sync():
             self.editor.setPlainText(transcript)
             self._highlight(uncertain)
-        self.region_label.hide()
+        self.region_panel.hide()
 
     def clear(self) -> None:
         """Drop both panes so the next document starts from an empty state."""
@@ -286,7 +306,7 @@ class ComparisonDock(QWidget):
             self.editor.clear()
             self.editor.setExtraSelections([])
         self.region_label.clear()
-        self.region_label.hide()
+        self.region_panel.hide()
 
     def transcript(self) -> str:
         return self.editor.toPlainText()
@@ -339,11 +359,14 @@ class ComparisonDock(QWidget):
 
     def show_region_result(self, text: str) -> None:
         """Display text recognised from a selected region beside the transcript."""
-        self.region_label.setText(text)
-        self.region_label.setVisible(bool(text))
+        self.region_label.setPlainText(text)
+        self.region_panel.setVisible(bool(text))
 
     def region_result(self) -> str:
-        return self.region_label.text()
+        return self.region_label.toPlainText()
+
+    def copy_region_result(self) -> None:
+        QApplication.clipboard().setText(self.region_result())
 
     # -- two-way synchronisation ------------------------------------------
 

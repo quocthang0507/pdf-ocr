@@ -160,8 +160,12 @@ def window(qtbot, tmp_path) -> MainWindow:
 def test_opening_a_document_notifies_instead_of_interrupting(
     window: MainWindow, tmp_path
 ) -> None:
+    import pymupdf
+
     document = tmp_path / "hoa-don.pdf"
-    document.write_bytes(b"%PDF-1.4 fake")
+    with pymupdf.open() as pdf:
+        pdf.new_page()
+        pdf.save(document)
 
     window.open_path(document)
 
@@ -209,9 +213,34 @@ def test_toast_style_has_explicit_readable_colors(center: NotificationCenter) ->
     toast = center.notify("Thông báo rõ ràng", Severity.SUCCESS)
 
     style = toast.styleSheet()
-    assert "palette(base)" not in style, (
-        "Toast không được dùng palette(base) gây tối/đen nền."
-    )
+    assert (
+        "palette(base)" not in style
+    ), "Toast không được dùng palette(base) gây tối/đen nền."
     assert "#toast_message" in style, "Cần định dạng màu chữ riêng cho toast message."
     assert "#toast_close" in style, "Cần định dạng nút đóng toast."
 
+
+def test_notifications_stay_clear_of_the_window_status_bar(qtbot, tmp_path) -> None:
+    """A toast must never cover the pause and cancel buttons."""
+    settings = QSettings(str(tmp_path / "session.ini"), QSettings.Format.IniFormat)
+    main_window = MainWindow(settings=settings)
+    qtbot.addWidget(main_window)
+    main_window.resize(900, 600)
+    main_window.batch_status.set_running(True)
+
+    toast = main_window.notifications.notify("Đang xử lý", Severity.INFO)
+    main_window.notifications.reposition()
+
+    status_top = main_window.height() - main_window.statusBar().height()
+    assert toast.y() + toast.height() <= status_top
+
+
+def test_toast_text_is_not_boxed_by_the_theme_frame_rule(
+    center: NotificationCenter,
+) -> None:
+    """QLabel is a QFrame, so a theme QFrame border would box the toast text."""
+    style = center.notify("Không viền", Severity.SUCCESS).styleSheet()
+
+    for selector in ("#toast_icon", "#toast_message"):
+        body = style.split(selector, 1)[1].split("}", 1)[0]
+        assert "border: none" in body

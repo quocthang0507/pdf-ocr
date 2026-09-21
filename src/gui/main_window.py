@@ -8,9 +8,18 @@ from pathlib import Path
 from typing import TypeVar
 
 import numpy as np
-from PySide6.QtCore import QByteArray, QMimeData, QSettings, Qt, Signal
-from PySide6.QtGui import QCloseEvent, QDragEnterEvent, QDropEvent
+from PySide6.QtCore import (
+    QByteArray,
+    QMimeData,
+    QObject,
+    QSettings,
+    Qt,
+    QThreadPool,
+    Signal,
+)
+from PySide6.QtGui import QCloseEvent, QColor, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
+    QApplication,
     QDockWidget,
     QFileDialog,
     QMainWindow,
@@ -18,9 +27,12 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.document_loader import SUPPORTED_EXTENSIONS, DocumentLoader
+from src.constants import ICON_COLORS
+from src.core.document_loader import SUPPORTED_EXTENSIONS
 from src.core.exceptions import DocumentLoadError, PDFOCRError
 from src.core.models import BoundingBox, OCRPage
+from src.core.transcript import apply_transcript
+from src.exporters.exporter_registry import ExporterRegistry
 from src.gui.components.comparison_dock import ComparisonDock
 from src.gui.components.menu_bar import (
     MAX_RECENT_FILES,
@@ -36,11 +48,19 @@ from src.gui.components.status_bar import BatchStatusBar
 from src.gui.components.tool_bar import ApplicationToolBar
 from src.gui.dialogs.batch_dialog import BatchDialog
 from src.gui.dialogs.settings_dialog import SettingsDialog
+from src.gui.document_session import DocumentSession
 from src.gui.i18n import translate_menu
+from src.gui.styles.style_manager import StyleManager
 from src.services.pipeline_service import PipelineService
 from src.utils.logger import logger
 from src.workers.batch_manager import BatchManager
-from src.workers.signals import PageTask
+from src.workers.export_worker import (
+    ExportWorker,
+    export_filters,
+    resolve_export_target,
+)
+from src.workers.region_worker import RegionWorker, native_region_text
+from src.workers.signals import BatchProgress, PageTask
 
 ORGANIZATION_NAME = "PDF OCR"
 APPLICATION_NAME = "PDF OCR Desktop"
@@ -49,6 +69,7 @@ GEOMETRY_KEY = "session/geometry"
 WINDOW_STATE_KEY = "session/window_state"
 DEFAULT_ENGINE_ID = "vietocr"
 DEFAULT_DPI = 300
+BATCH_SHUTDOWN_MS = 10_000
 
 ResultT = TypeVar("ResultT")
 
@@ -74,6 +95,10 @@ class MainWindow(QMainWindow):
     folder_opened = Signal(str)
     ocr_requested = Signal(str)
     export_requested = Signal(str)
+    export_completed = Signal(str)
+    export_failed = Signal(str)
+    region_recognised = Signal(str)
+    region_failed = Signal(str)
     zoom_requested = Signal(int)
     region_ocr_requested = Signal(BoundingBox)
     settings_requested = Signal()
@@ -88,13 +113,14 @@ class MainWindow(QMainWindow):
         super().__init__(parent)
         self._settings = settings or QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         self._current_path: Path | None = None
-        self._current_page: int = 1
-        self._total_pages: int = 0
-        self._current_image: np.ndarray | None = None
-        self._recognised_pages: dict[int, OCRPage] = {}
         self._options: dict[str, object] = {}
         self._pipeline = pipeline or PipelineService()
         self._batch: BatchDialog | None = None
+        self._session: DocumentSession | None = None
+        self._sessions: dict[Path, DocumentSession] = {}
+        self._jobs = QThreadPool(self)
+        self._job_signals: set[QObject] = set()
+        self._displayed: tuple[np.ndarray, int] | None = None
         self.setWindowTitle(APPLICATION_NAME)
         self.setAcceptDrops(True)
         self.command_actions = create_actions(self)
@@ -104,6 +130,7 @@ class MainWindow(QMainWindow):
         )
         self.tool_bar = ApplicationToolBar(self.command_actions, self)
         self.addToolBar(self.tool_bar)
+        self.apply_theme_colors(StyleManager(self._application()).current_theme)
         self.batch_status = BatchStatusBar(self)
         self.setStatusBar(self.batch_status)
         self.notifications = NotificationCenter(self)
@@ -114,6 +141,7 @@ class MainWindow(QMainWindow):
         self._connect_commands()
         self._remember_options(self.settings_dock.options())
         self._refresh_recent_menu()
+        self._refresh_page_controls()
         self._restore_session()
 
     # -- document session -------------------------------------------------
@@ -139,42 +167,69 @@ class MainWindow(QMainWindow):
         if not _is_supported(target):
             raise DocumentLoadError("Định dạng tệp này chưa được hỗ trợ.")
         resolved = target.resolve()
+        session = self._sessions.get(resolved) or DocumentSession(resolved)
+        # Reading the page count opens the file, so a corrupt one fails here,
+        # before the document already on screen is replaced.
+        if session.page_count < 1:
+            raise DocumentLoadError("Tài liệu không có trang nào.")
+        self._activate(session)
         self.set_current_path(resolved)
         self._remember(resolved)
-        self._recognised_pages.clear()
-        self._load_document_page(resolved, 1)
         self.statusBar().showMessage(f"Đã mở {resolved.name}")
         self.notifications.notify(f"Đã mở {resolved.name}", Severity.SUCCESS)
         self.document_opened.emit(str(resolved))
 
-    def _load_document_page(self, path: Path, page_number: int) -> None:
-        """Load and display one page of the active document."""
-        try:
-            with DocumentLoader(path) as loader:
-                self._total_pages = loader.page_count
-                self._current_page = max(1, min(page_number, loader.page_count))
-                dpi = self._option_number("dpi", DEFAULT_DPI)
-                loaded = loader.load_page(self._current_page, dpi=dpi)
-                self._current_image = loaded.image
-                self.comparison.set_page_info(self._current_page, self._total_pages)
-                if self._current_page in self._recognised_pages:
-                    self.comparison.set_page(
-                        self._recognised_pages[self._current_page], loaded.image
-                    )
-                elif loaded.has_text_layer and loaded.extracted_text.strip():
-                    cleaned = _reconstruct_paragraphs(loaded.extracted_text)
-                    self.comparison.set_image(loaded.image, text=cleaned)
-                else:
-                    self.comparison.set_image(loaded.image)
-        except DocumentLoadError as error:
-            logger.warning("Không thể hiển thị xem trước '{}': {}", path, error)
-        except Exception as error:
-            logger.warning("Lỗi không mong đợi khi hiển thị '{}': {}", path, error)
+    def _activate(self, session: DocumentSession) -> None:
+        """Make a document current, releasing the file of the previous one."""
+        if self._session is not None and self._session is not session:
+            self._session.close()
+        self._sessions[session.path] = session
+        self._session = session
+        self._show_current_page()
 
-    def _change_page(self, page_number: int) -> None:
-        """Switch the preview to another page of the currently open document."""
-        if self._current_path is not None:
-            self._load_document_page(self._current_path, page_number)
+    @property
+    def document_session(self) -> DocumentSession | None:
+        return self._session
+
+    def show_page_step(self, delta: int) -> None:
+        """Move through the open document one page at a time."""
+        if self._session is not None:
+            self.go_to_page(self._session.current_page + delta)
+
+    def go_to_page(self, page_number: int) -> None:
+        """Show another page of the open document; out-of-range is clamped."""
+        if self._session is None:
+            return
+        self._session.go_to(page_number)
+        self.guarded(self._show_current_page, title="Xem trang")
+
+    def _show_current_page(self) -> None:
+        session = self._session
+        if session is None:
+            return
+        number = session.current_page
+        result = session.result(number)
+        if result is None:
+            dpi = self._option_number("dpi", DEFAULT_DPI)
+            image = session.image(number, dpi=dpi)
+            # A text-based page reads well before OCR; show its own text.
+            native = session.native_text(number, dpi=dpi)
+            self.comparison.set_image(image, text=_reconstruct_paragraphs(native))
+        else:
+            dpi = result.dpi
+            image = session.image_for(result)
+            self.comparison.set_page(result, image)
+        # Remembered so a region drawn on screen maps back to the same pixels.
+        self._displayed = (image, dpi)
+        self._refresh_page_controls()
+
+    def _refresh_page_controls(self) -> None:
+        session = self._session
+        total = session.page_count if session is not None else 0
+        current = session.current_page if session is not None else 0
+        self.comparison.set_page_info(current, total)
+        self.command_actions["previous_page"].setEnabled(current > 1)
+        self.command_actions["next_page"].setEnabled(0 < current < total)
 
     def open_folder(self, path: str | Path) -> None:
         """Announce a folder of documents for batch processing."""
@@ -184,7 +239,30 @@ class MainWindow(QMainWindow):
         target = Path(path).expanduser()
         if not target.is_dir():
             raise DocumentLoadError("Không tìm thấy thư mục đã chọn.")
-        self.folder_opened.emit(str(target.resolve()))
+        folder = target.resolve()
+        documents = sorted(
+            (entry for entry in folder.iterdir() if entry.is_file()),
+            key=lambda entry: entry.name.lower(),
+        )
+        documents = [entry for entry in documents if _is_supported(entry)]
+        if not documents:
+            self.notifications.notify(
+                "Thư mục không có tài liệu nào được hỗ trợ.", Severity.WARNING
+            )
+            return
+        self.folder_opened.emit(str(folder))
+        self._preview_first_readable(documents)
+        self.run_batch([str(entry) for entry in documents])
+
+    def _preview_first_readable(self, documents: Sequence[Path]) -> None:
+        """Show the first document that opens; a corrupt one must not block the rest."""
+        for document in documents:
+            try:
+                self._open_path(document)
+            except PDFOCRError as error:
+                logger.warning("Bỏ qua tài liệu không mở được {}: {}", document, error)
+                continue
+            return
 
     # -- error boundary ---------------------------------------------------
 
@@ -270,6 +348,10 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
         self.notifications.dismiss_all()
+        self._stop_batch()
+        self._jobs.waitForDone(BATCH_SHUTDOWN_MS)
+        for session in self._sessions.values():
+            session.close()
         self.save_session()
         super().closeEvent(event)
 
@@ -301,6 +383,8 @@ class MainWindow(QMainWindow):
             "zoom_in": lambda: self.zoom_requested.emit(1),
             "zoom_out": lambda: self.zoom_requested.emit(-1),
             "zoom_reset": lambda: self.zoom_requested.emit(0),
+            "previous_page": lambda: self.show_page_step(-1),
+            "next_page": lambda: self.show_page_step(1),
             "run_ocr": self.request_ocr,
             "find_replace": self.open_find_replace,
             "settings": self.request_settings,
@@ -327,6 +411,18 @@ class MainWindow(QMainWindow):
         if selected:
             self.open_folder(selected)
 
+    @staticmethod
+    def _application() -> QApplication:
+        application = QApplication.instance()
+        if not isinstance(application, QApplication):
+            raise RuntimeError("Cần khởi tạo QApplication trước khi mở cửa sổ.")
+        return application
+
+    def apply_theme_colors(self, theme: str) -> None:
+        """Re-tint the tool bar icons so they stay visible in the current theme."""
+        tint = ICON_COLORS.get(theme)
+        self.tool_bar.apply_icon_color(QColor(tint) if tint else None)
+
     def retranslate(self) -> None:
         """Re-label the shell after the interface language has changed."""
         retranslate_actions(self.command_actions)
@@ -343,6 +439,44 @@ class MainWindow(QMainWindow):
     def set_region_mode(self, enabled: bool) -> None:
         """Turn region drawing on the page on or off."""
         self.comparison.set_region_mode(enabled)
+
+    def recognise_region(self, region: BoundingBox) -> None:
+        """Read the drawn rectangle: from the text layer, else with the OCR model."""
+        self.guarded(lambda: self._recognise_region(region), title="OCR vùng chọn")
+
+    def _recognise_region(self, region: BoundingBox) -> None:
+        session, displayed = self._session, self._displayed
+        if session is None or displayed is None:
+            return
+        image, dpi = displayed
+        text = native_region_text(session.path, session.current_page, region, dpi)
+        if text:
+            self._on_region_recognised(text)
+            return
+        worker = RegionWorker(
+            image,
+            region,
+            self._option_text("engine_id", DEFAULT_ENGINE_ID),
+            self._option_text("device", "cpu"),
+        )
+        worker.signals.finished.connect(self._on_region_recognised)
+        worker.signals.failed.connect(self._on_region_failed)
+        self._job_signals.add(worker.signals)
+        self.comparison.show_region_result("Đang nhận diện vùng chọn…")
+        self._jobs.start(worker)
+
+    def _on_region_recognised(self, text: str) -> None:
+        self._job_signals.discard(self.sender())
+        self.comparison.show_region_result(
+            text or "Không tìm thấy chữ trong vùng chọn."
+        )
+        self.region_recognised.emit(text)
+
+    def _on_region_failed(self, message: str) -> None:
+        self._job_signals.discard(self.sender())
+        self.comparison.show_region_result("")
+        self.report_error(message)
+        self.region_failed.emit(message)
 
     def request_settings(self) -> None:
         self.settings_requested.emit()
@@ -399,40 +533,104 @@ class MainWindow(QMainWindow):
         return value
 
     def _wire_batch_controls(self, manager: BatchManager) -> None:
+        # Bound methods, not lambdas: Qt drops them when the window is destroyed.
         manager.progress.connect(self.batch_status.show_progress)
-        manager.finished.connect(lambda _p: self.batch_status.set_running(False))
-        manager.cancelled.connect(lambda _p: self.batch_status.set_running(False))
+        manager.finished.connect(self._on_batch_finished)
+        manager.cancelled.connect(self._on_batch_stopped)
         self.batch_status.pause_toggled.connect(
             lambda paused: manager.pause() if paused else manager.resume()
         )
         self.batch_status.cancel_requested.connect(manager.cancel)
 
+    def _on_batch_stopped(self, _progress: object) -> None:
+        self.batch_status.set_running(False)
+
+    def _stop_batch(self) -> None:
+        """Cancel a running batch and let its in-flight page finish first."""
+        if self._batch is None:
+            return
+        self._batch.manager.cancel()
+        self._batch.manager.wait_for_completion(BATCH_SHUTDOWN_MS)
+
     def _on_page_recognised(self, task: PageTask, page: object) -> None:
-        self.notifications.notify(
-            f"Đã nhận diện trang {task.page_number}", Severity.SUCCESS, duration_ms=1200
-        )
-        if isinstance(page, OCRPage):
-            self._recognised_pages[task.page_number] = page
-            if (
-                self._current_path is not None
-                and Path(task.document_path).resolve() == self._current_path.resolve()
-                and task.page_number == self._current_page
-            ):
-                image = self._current_image
-                if image is None:
-                    try:
-                        with DocumentLoader(self._current_path) as loader:
-                            dpi = self._option_number("dpi", DEFAULT_DPI)
-                            image = loader.load_page(task.page_number, dpi=dpi).image
-                            self._current_image = image
-                    except Exception as error:
-                        logger.warning("Không nạp được ảnh trang OCR: {}", error)
-                if image is not None:
-                    self.comparison.set_page(page, image)
+        """Keep the result with its document and show it if it is on screen."""
+        if not isinstance(page, OCRPage):
+            return
+        path = Path(task.document_path)
+        session = self._sessions.get(path)
+        if session is None:
+            session = DocumentSession(path)
+            self._sessions[path] = session
+        session.store(page)
+        if session is self._session and page.page_number == session.current_page:
+            self.guarded(self._show_current_page, title="Hiển thị kết quả")
+
+    def _on_batch_finished(self, progress: BatchProgress) -> None:
+        self.batch_status.set_running(False)
+        summary = f"Đã nhận diện {progress.completed}/{progress.total} trang"
+        if progress.failed:
+            self.notifications.notify(
+                f"{summary}, {progress.failed} trang lỗi.", Severity.WARNING
+            )
+        else:
+            self.notifications.notify(f"{summary}.", Severity.SUCCESS)
+
+    def _on_transcript_edited(self, text: str) -> None:
+        """Fold the edit into the page model so an export includes it."""
+        session = self._session
+        if session is None:
+            return
+        result = session.result(session.current_page)
+        if result is not None:
+            session.store(apply_transcript(result, text))
 
     def request_export(self) -> None:
         if self._require_document():
             self.export_requested.emit(str(self._current_path))
+            self.guarded(self._export, title="Xuất tài liệu")
+
+    def _export(self) -> None:
+        """Ask where to save, then write the file off the GUI thread."""
+        session = self._session
+        if session is None or not session.has_results():
+            self.notifications.notify(
+                "Chưa có kết quả nhận diện. Hãy chạy OCR trước.", Severity.WARNING
+            )
+            return
+        filters = export_filters()
+        default_label, default_format = filters[0]
+        extension = ExporterRegistry.describe(default_format).extensions[0]
+        selected, chosen = QFileDialog.getSaveFileName(
+            self,
+            "Xuất tài liệu",
+            str(session.path.with_suffix(extension)),
+            ";;".join(label for label, _format in filters),
+            default_label,
+        )
+        if not selected:
+            return
+        format_id, destination = resolve_export_target(selected, chosen)
+        worker = ExportWorker(session.document(), format_id, destination)
+        worker.signals.finished.connect(self._on_export_finished)
+        worker.signals.failed.connect(self._on_export_failed)
+        # The signals object must outlive the runnable, which Qt deletes.
+        self._job_signals.add(worker.signals)
+        self.command_actions["export"].setEnabled(False)
+        self._jobs.start(worker)
+
+    def _settle_export(self) -> None:
+        self._job_signals.discard(self.sender())
+        self.command_actions["export"].setEnabled(True)
+
+    def _on_export_finished(self, path: str) -> None:
+        self._settle_export()
+        self.notifications.notify(f"Đã xuất {Path(path).name}", Severity.SUCCESS)
+        self.export_completed.emit(path)
+
+    def _on_export_failed(self, message: str) -> None:
+        self._settle_export()
+        self.report_error(message)
+        self.export_failed.emit(message)
 
     def _require_document(self) -> bool:
         if self._current_path is not None:
@@ -454,7 +652,9 @@ class MainWindow(QMainWindow):
         self.comparison = ComparisonDock(self)
         self.zoom_requested.connect(self.comparison.apply_zoom)
         self.comparison.region_ocr_requested.connect(self.region_ocr_requested)
-        self.comparison.page_change_requested.connect(self._change_page)
+        self.comparison.page_change_requested.connect(self.go_to_page)
+        self.comparison.transcript_edited.connect(self._on_transcript_edited)
+        self.region_ocr_requested.connect(self.recognise_region)
         return self.comparison
 
     def _create_options_dock(self) -> QDockWidget:
@@ -478,6 +678,7 @@ class MainWindow(QMainWindow):
         dialog = SettingsDialog(parent=self)
         dialog.weights_directory_changed.connect(self._apply_weights_directory)
         dialog.language_changed.connect(lambda _code: self.retranslate())
+        dialog.theme_changed.connect(self.apply_theme_colors)
         dialog.exec()
 
     def _apply_weights_directory(self, directory: str) -> None:

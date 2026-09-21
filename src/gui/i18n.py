@@ -5,6 +5,7 @@ from __future__ import annotations
 from pathlib import Path
 
 from PySide6.QtCore import QCoreApplication, QTranslator
+from PySide6.QtWidgets import QDialogButtonBox
 
 from src.constants import DEFAULT_LANGUAGE, LANGUAGE_NAMES
 from src.utils.logger import logger
@@ -71,17 +72,38 @@ class TranslationManager:
         return language
 
 
+#: Qt ships no Vietnamese catalogue, so the standard buttons are labelled here.
+BUTTON_LABELS: dict[QDialogButtonBox.StandardButton, str] = {
+    QDialogButtonBox.StandardButton.Ok: "Đồng ý",
+    QDialogButtonBox.StandardButton.Cancel: "Hủy",
+    QDialogButtonBox.StandardButton.Close: "Đóng",
+    QDialogButtonBox.StandardButton.Save: "Lưu",
+    QDialogButtonBox.StandardButton.Apply: "Áp dụng",
+}
+
+
+def localise_buttons(buttons: QDialogButtonBox) -> QDialogButtonBox:
+    """Give a standard button box Vietnamese labels instead of Qt's English."""
+    for standard, label in BUTTON_LABELS.items():
+        button = buttons.button(standard)
+        if button is not None:
+            button.setText(label)
+    return buttons
+
+
 def translate_menu(text: str) -> str:
     """Translate one command label through the shared menu context."""
     return QCoreApplication.translate(MENU_CONTEXT, text)
 
 
 __all__ = [
+    "BUTTON_LABELS",
     "DEFAULT_LANGUAGE",
     "LANGUAGE_NAMES",
     "MENU_CONTEXT",
     "TranslationManager",
     "available_languages",
+    "localise_buttons",
     "translate_menu",
     "translations_dir",
 ]

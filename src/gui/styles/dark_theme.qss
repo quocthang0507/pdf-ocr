@@ -174,9 +174,9 @@ QPushButton:default:hover {
 }
 
 QPushButton:default:disabled {
-    background-color: #29406e;
-    border-color: #29406e;
-    color: #9aa6b8;
+    background-color: #181f28;
+    border-color: #262f3c;
+    color: #616d7e;
 }
 
 QDialogButtonBox QPushButton {
@@ -256,6 +256,7 @@ QCheckBox::indicator:hover {
 }
 
 QCheckBox::indicator:checked {
+    image: url("@ICONS@/check.svg");
     background-color: #2563eb;
     border-color: #2563eb;
 }
@@ -421,6 +422,29 @@ QStatusBar::item {
     border: none;
 }
 
+QSpinBox::up-button,
+QSpinBox::down-button {
+    background-color: #232c38;
+    border-left: 1px solid #38455a;
+    subcontrol-origin: border;
+    width: 18px;
+}
+
+QSpinBox::up-button {
+    border-top-right-radius: 6px;
+    subcontrol-position: top right;
+}
+
+QSpinBox::down-button {
+    border-bottom-right-radius: 6px;
+    subcontrol-position: bottom right;
+}
+
+QSpinBox::up-button:hover,
+QSpinBox::down-button:hover {
+    background-color: #2b3644;
+}
+
 QToolTip {
     background-color: #232c38;
     border: 1px solid #2c3644;
@@ -491,3 +515,39 @@ QPushButton#next_page_button:disabled {
     opacity: 0.6;
 }
 
+QSpinBox::up-arrow {
+    height: 10px;
+    image: url("@ICONS@/chevron-up-dark.svg");
+    width: 10px;
+}
+
+QSpinBox::down-arrow {
+    height: 10px;
+    image: url("@ICONS@/chevron-down-dark.svg");
+    width: 10px;
+}
+
+QComboBox::down-arrow {
+    height: 10px;
+    image: url("@ICONS@/chevron-down-dark.svg");
+    width: 10px;
+}
+
+QFrame#region_panel {
+    background-color: #1a212b;
+    border: 1px solid #2c3644;
+    border-radius: 10px;
+}
+
+QLabel#region_title {
+    background-color: transparent;
+    color: #93c5fd;
+    font-weight: 600;
+}
+
+QPlainTextEdit#region_result {
+    background-color: #141a22;
+    border: 1px solid #2c3644;
+    border-radius: 7px;
+    padding: 6px 8px;
+}

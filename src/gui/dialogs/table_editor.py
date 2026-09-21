@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.models import OCRTable, TableCellSpan
+from src.gui.i18n import localise_buttons
 
 
 def _spans_that_still_fit(
@@ -80,9 +81,12 @@ class TableEditorDialog(QDialog):
             controls.addWidget(button)
         controls.addStretch(1)
 
-        buttons = QDialogButtonBox(
-            QDialogButtonBox.StandardButton.Ok | QDialogButtonBox.StandardButton.Cancel,
-            parent=self,
+        buttons = localise_buttons(
+            QDialogButtonBox(
+                QDialogButtonBox.StandardButton.Ok
+                | QDialogButtonBox.StandardButton.Cancel,
+                parent=self,
+            )
         )
         buttons.accepted.connect(self.accept)
         buttons.rejected.connect(self.reject)

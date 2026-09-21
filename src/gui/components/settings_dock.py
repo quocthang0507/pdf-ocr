@@ -19,6 +19,7 @@ from PySide6.QtWidgets import (
 from src.engines.engine_registry import EngineRegistry
 from src.services.device_service import detect_devices
 
+DEFAULT_ENGINE_ID = "vietocr"
 MIN_DPI = 72
 MAX_DPI = 600
 DEFAULT_DPI = 300
@@ -71,6 +72,8 @@ class SettingsDock(QWidget):
                 metadata.description,
                 Qt.ItemDataRole.ToolTipRole,
             )
+        preferred = self.engine_combo.findData(DEFAULT_ENGINE_ID)
+        self.engine_combo.setCurrentIndex(max(preferred, 0))
         populate_device_combo(self.device_combo)
 
     def _build_layout(self) -> None:
