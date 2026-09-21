@@ -24,9 +24,7 @@ class LayoutAnalyzer:
             sorted_blocks = self.merge_paragraphs(sorted_blocks)
         return page.with_updates(blocks=sorted_blocks)
 
-    def merge_paragraphs(
-        self, blocks: Sequence[OCRBlock]
-    ) -> tuple[OCRBlock, ...]:
+    def merge_paragraphs(self, blocks: Sequence[OCRBlock]) -> tuple[OCRBlock, ...]:
         """Group consecutive lines in reading order into paragraph blocks."""
         if any(not isinstance(block, OCRBlock) for block in blocks):
             raise TypeError("blocks chỉ được chứa đối tượng OCRBlock.")
@@ -49,9 +47,7 @@ class LayoutAnalyzer:
             for order, block in enumerate(merged)
         )
 
-    def _should_merge_blocks(
-        self, current: OCRBlock, candidate: OCRBlock
-    ) -> bool:
+    def _should_merge_blocks(self, current: OCRBlock, candidate: OCRBlock) -> bool:
         if (
             current.block_type != BlockType.TEXT
             or candidate.block_type != BlockType.TEXT
@@ -93,7 +89,7 @@ class LayoutAnalyzer:
         if prev_text.endswith("-") and not prev_text.endswith(" -"):
             return True
 
-        if prev_text.endswith((".", "!", "?", "...", "…”", ".\"")):
+        if prev_text.endswith((".", "!", "?", "...", "…”", '."')):
             col_width = max(current.bbox.width, candidate.bbox.width)
             if col_width > 0 and b1.width < 0.65 * col_width:
                 return False

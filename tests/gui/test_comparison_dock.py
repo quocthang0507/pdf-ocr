@@ -251,5 +251,3 @@ def test_render_joins_paragraph_lines_smoothly(dock: ComparisonDock) -> None:
 
     dock.set_page(page, _image(400, 400))
     assert dock.transcript() == "Dòng thứ nhất tiếp"
-
-

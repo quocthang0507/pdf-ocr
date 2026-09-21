@@ -176,4 +176,3 @@ def test_merge_paragraphs_handles_hyphenation_at_line_end() -> None:
 
     assert len(merged) == 1
     assert merged[0].text == "Hệ thống nhận-diện văn bản tự động."
-

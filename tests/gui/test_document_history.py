@@ -132,4 +132,3 @@ def test_clear_all_history(
 
     assert dialog.table.rowCount() == 0
     assert dialog.btn_clear.isEnabled() is False
-
