@@ -87,6 +87,7 @@ class DocumentCanvas(QGraphicsView):
     block_selected = Signal(int)
     block_activated = Signal(int)
     region_selected = Signal(BoundingBox)
+    zoom_changed = Signal(float)
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -283,6 +284,7 @@ class DocumentCanvas(QGraphicsView):
     def _apply_zoom(self, factor: float) -> None:
         self._zoom = min(max(factor, MIN_ZOOM), MAX_ZOOM)
         self.setTransform(QTransform.fromScale(self._zoom, self._zoom))
+        self.zoom_changed.emit(self._zoom)
 
     def mouseDoubleClickEvent(  # noqa: N802 - Qt override
         self, event: QMouseEvent

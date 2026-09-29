@@ -16,6 +16,7 @@ from PySide6.QtCore import (
     Qt,
     QThreadPool,
     Signal,
+    SignalInstance,
 )
 from PySide6.QtGui import QCloseEvent, QColor, QDragEnterEvent, QDropEvent
 from PySide6.QtWidgets import (
@@ -116,6 +117,7 @@ class MainWindow(QMainWindow):
         self._options: dict[str, object] = {}
         self._pipeline = pipeline or PipelineService()
         self._batch: BatchDialog | None = None
+        self._batch_controls_wired = False
         self._session: DocumentSession | None = None
         self._sessions: dict[Path, DocumentSession] = {}
         self._jobs = QThreadPool(self)
@@ -512,12 +514,13 @@ class MainWindow(QMainWindow):
             lambda task: session.recognise(task.document_path, task.page_number),
             page_counter=session.page_count,
         )
+        # Kept off-screen: progress is shown in the bottom status bar instead
+        # of a popup, so the document underneath stays visible while it runs.
         dialog = BatchDialog(manager, documents, self)
         dialog.page_ready.connect(self._on_page_recognised)
         dialog.batch_finished.connect(lambda _progress: session.close())
         self._wire_batch_controls(manager)
         self._batch = dialog
-        dialog.show()
         dialog.start()
         self.batch_status.set_running(True)
 
@@ -533,6 +536,11 @@ class MainWindow(QMainWindow):
         return value
 
     def _wire_batch_controls(self, manager: BatchManager) -> None:
+        # Disconnect the previous run's controls first, or pause/cancel would
+        # keep reaching every manager that has ever run in this window.
+        if self._batch_controls_wired:
+            self._disconnect_all(self.batch_status.pause_toggled)
+            self._disconnect_all(self.batch_status.cancel_requested)
         # Bound methods, not lambdas: Qt drops them when the window is destroyed.
         manager.progress.connect(self.batch_status.show_progress)
         manager.finished.connect(self._on_batch_finished)
@@ -541,6 +549,15 @@ class MainWindow(QMainWindow):
             lambda paused: manager.pause() if paused else manager.resume()
         )
         self.batch_status.cancel_requested.connect(manager.cancel)
+        self._batch_controls_wired = True
+
+    @staticmethod
+    def _disconnect_all(signal: SignalInstance) -> None:
+        """Drop every existing listener; a signal with none yet is not an error."""
+        try:
+            signal.disconnect()
+        except (RuntimeError, TypeError):
+            pass
 
     def _on_batch_stopped(self, _progress: object) -> None:
         self.batch_status.set_running(False)

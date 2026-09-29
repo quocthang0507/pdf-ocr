@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QSpinBox,
     QSplitter,
     QStyle,
     QTextEdit,
@@ -151,7 +152,12 @@ class ComparisonDock(QWidget):
         else:
             self.prev_page_btn.setText("◀")
         self.prev_page_btn.setEnabled(False)
-        self.page_label = QLabel("Trang 0 / 0", self)
+        self.page_spin = QSpinBox(self)
+        self.page_spin.setObjectName("page_spin")
+        self.page_spin.setToolTip("Đi tới trang")
+        self.page_spin.setRange(0, 0)
+        self.page_spin.setEnabled(False)
+        self.page_label = QLabel("/ 0", self)
         self.page_label.setObjectName("page_indicator")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.next_page_btn = QPushButton(self)
@@ -163,6 +169,19 @@ class ComparisonDock(QWidget):
         else:
             self.next_page_btn.setText("▶")
         self.next_page_btn.setEnabled(False)
+        self.zoom_out_btn = QPushButton("−", self)
+        self.zoom_out_btn.setObjectName("zoom_out_button")
+        self.zoom_out_btn.setToolTip("Thu nhỏ")
+        self.zoom_label = QLabel("100%", self)
+        self.zoom_label.setObjectName("zoom_indicator")
+        self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.zoom_label.setMinimumWidth(48)
+        self.zoom_in_btn = QPushButton("+", self)
+        self.zoom_in_btn.setObjectName("zoom_in_button")
+        self.zoom_in_btn.setToolTip("Phóng to")
+        self.zoom_reset_btn = QPushButton("Vừa khung", self)
+        self.zoom_reset_btn.setObjectName("zoom_reset_button")
+        self.zoom_reset_btn.setToolTip("Vừa khung cửa sổ")
         self.table_editor: TableEditorDialog | None = None
         self.find_replace_dialog: FindReplaceDialog | None = None
         self._syncing = False
@@ -171,10 +190,16 @@ class ComparisonDock(QWidget):
         self.canvas.block_selected.connect(self._focus_text_block)
         self.canvas.block_activated.connect(self.edit_block_table)
         self.canvas.region_selected.connect(self.region_ocr_requested)
+        self.canvas.zoom_changed.connect(self._show_zoom)
         self.editor.cursorPositionChanged.connect(self._focus_canvas_block)
         self.editor.textChanged.connect(self._publish_transcript)
         self.prev_page_btn.clicked.connect(self._prev_page)
         self.next_page_btn.clicked.connect(self._next_page)
+        self.page_spin.editingFinished.connect(self._jump_to_spin_page)
+        self.zoom_in_btn.clicked.connect(self.canvas.zoom_in)
+        self.zoom_out_btn.clicked.connect(self.canvas.zoom_out)
+        self.zoom_reset_btn.clicked.connect(self.canvas.reset_zoom)
+        self._show_zoom(self.canvas.zoom_factor())
 
     def _build_layout(self) -> None:
         canvas_pane = QWidget(self)
@@ -187,8 +212,13 @@ class ComparisonDock(QWidget):
         nav_layout = QHBoxLayout(nav_bar)
         nav_layout.setContentsMargins(4, 2, 4, 4)
         nav_layout.setSpacing(8)
+        nav_layout.addWidget(self.zoom_out_btn)
+        nav_layout.addWidget(self.zoom_label)
+        nav_layout.addWidget(self.zoom_in_btn)
+        nav_layout.addWidget(self.zoom_reset_btn)
         nav_layout.addStretch(1)
         nav_layout.addWidget(self.prev_page_btn)
+        nav_layout.addWidget(self.page_spin)
         nav_layout.addWidget(self.page_label)
         nav_layout.addWidget(self.next_page_btn)
         nav_layout.addStretch(1)
@@ -250,6 +280,11 @@ class ComparisonDock(QWidget):
         if self._current_page < self._total_pages:
             self.page_change_requested.emit(self._current_page + 1)
 
+    def _jump_to_spin_page(self) -> None:
+        page = self.page_spin.value()
+        if page != self._current_page and self._total_pages > 0:
+            self.page_change_requested.emit(page)
+
     def set_page_info(self, current: int, total: int) -> None:
         """Update current page number, total pages and button availability."""
         self._current_page = max(0, current)
@@ -258,6 +293,11 @@ class ComparisonDock(QWidget):
             self.page_label.setText(f"Trang {self._current_page} / {self._total_pages}")
         else:
             self.page_label.setText("Trang 0 / 0")
+        self.page_spin.blockSignals(True)
+        self.page_spin.setRange(1, max(1, self._total_pages))
+        self.page_spin.setValue(max(1, self._current_page))
+        self.page_spin.setEnabled(self._total_pages > 0)
+        self.page_spin.blockSignals(False)
         self.prev_page_btn.setEnabled(self._current_page > 1)
         self.next_page_btn.setEnabled(self._current_page < self._total_pages)
 
@@ -266,6 +306,9 @@ class ComparisonDock(QWidget):
 
     def total_pages(self) -> int:
         return self._total_pages
+
+    def _show_zoom(self, factor: float) -> None:
+        self.zoom_label.setText(f"{round(factor * 100)}%")
 
     # -- content ----------------------------------------------------------
 

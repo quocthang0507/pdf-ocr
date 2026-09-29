@@ -5,7 +5,7 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction, QColor, QIcon, QPainter, QPixmap
+from PySide6.QtGui import QAction, QColor, QIcon, QImage, QPixmap
 from PySide6.QtWidgets import QStyle, QToolBar, QWidget
 
 from src.gui.components.menu_bar import SEPARATOR
@@ -43,18 +43,40 @@ ICON_SIZE = 18
 
 
 def _tinted(icon: QIcon, colour: QColor, size: int = ICON_SIZE) -> QIcon:
-    """Recolour a style icon so it stays visible on a dark tool bar."""
+    """Recolour a style icon for a dark tool bar without erasing its shading.
+
+    A flat single-colour fill paints every opaque pixel alike, so a shape
+    that relies on a dark outline over a light fill (rather than on
+    transparency) turns into a blank, uniformly coloured silhouette. Mapping
+    each pixel's luminance onto a two-tone gradient keeps that contrast.
+    """
     source = icon.pixmap(QSize(size, size))
     if source.isNull():
         return icon
-    tinted = QPixmap(source.size())
-    tinted.fill(Qt.GlobalColor.transparent)
-    painter = QPainter(tinted)
-    painter.drawPixmap(0, 0, source)
-    painter.setCompositionMode(QPainter.CompositionMode.CompositionMode_SourceIn)
-    painter.fillRect(tinted.rect(), colour)
-    painter.end()
-    return QIcon(tinted)
+    image = source.toImage().convertToFormat(QImage.Format.Format_ARGB32)
+    shadow = colour.darker(280)
+    for y in range(image.height()):
+        for x in range(image.width()):
+            pixel = image.pixelColor(x, y)
+            alpha = pixel.alpha()
+            if alpha == 0:
+                continue
+            luminance = (
+                0.299 * pixel.red() + 0.587 * pixel.green() + 0.114 * pixel.blue()
+            ) / 255
+            mixed = _mix(shadow, colour, luminance)
+            mixed.setAlpha(alpha)
+            image.setPixelColor(x, y, mixed)
+    return QIcon(QPixmap.fromImage(image))
+
+
+def _mix(start: QColor, end: QColor, ratio: float) -> QColor:
+    """Linearly blend two colours; ratio 0 is the start, 1 is the end."""
+    return QColor(
+        round(start.red() + (end.red() - start.red()) * ratio),
+        round(start.green() + (end.green() - start.green()) * ratio),
+        round(start.blue() + (end.blue() - start.blue()) * ratio),
+    )
 
 
 class ApplicationToolBar(QToolBar):
@@ -91,8 +113,8 @@ class ApplicationToolBar(QToolBar):
     def apply_icon_color(self, colour: QColor | None) -> None:
         """Re-tint the icons, or restore the originals when None is given.
 
-        Style icons are drawn dark and disappear on a dark tool bar, but
-        tinting flattens their detail, so it is only applied where needed.
+        Style icons are drawn dark and disappear on a dark tool bar, so they
+        are re-tinted with a duotone map that keeps their internal shading.
         """
         for key, action in self._actions_by_key.items():
             source = self._source_icons.get(key)
