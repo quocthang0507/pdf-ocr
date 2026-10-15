@@ -1,10 +1,16 @@
 import re
 from collections.abc import Sequence
+from statistics import median
 
 from src.constants import BlockType
 from src.core.models import BoundingBox, OCRBlock, OCRPage
 
 _LIST_MARKER_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
+_CAPTION_REGEX = re.compile(
+    r"^\s*(?:hình|bảng|biểu\s*đồ|sơ\s*đồ|figure|table|chart|diagram)"
+    r"\s*(?:số\s*)?\d+(?:[\s:.)-]|$)",
+    re.IGNORECASE,
+)
 
 
 class LayoutAnalyzer:
@@ -29,6 +35,7 @@ class LayoutAnalyzer:
         """
         if not isinstance(page, OCRPage):
             raise TypeError("page phải là đối tượng OCRPage.")
+        page = self.classify_blocks(page)
         grouped = self.group_tables(page)
         if reading_order:
             blocks = self.sort_blocks(grouped.blocks)
@@ -42,6 +49,62 @@ class LayoutAnalyzer:
                 for order, block in enumerate(blocks)
             )
         return page.with_updates(blocks=blocks)
+
+    def classify_blocks(self, page: OCRPage) -> OCRPage:
+        """Label captions and typographically prominent headings when evidence exists.
+
+        Text size comes from native PDF font metadata when available, or line
+        height for scanned OCR. Pages without a clear size distinction remain
+        ordinary text rather than receiving speculative heading labels.
+        """
+        candidates = [
+            (index, block, self._text_size(block))
+            for index, block in enumerate(page.blocks)
+            if block.block_type is BlockType.TEXT
+            and block.text
+            and not _CAPTION_REGEX.match(block.text)
+            and not any(
+                self._center_in(block.bbox, table.bbox) for table in page.tables
+            )
+        ]
+        sizes = [item[2] for item in candidates if item[2] > 0]
+        lower_half = sorted(sizes)[: max(1, (len(sizes) + 1) // 2)]
+        baseline = median(lower_half) if lower_half else 0.0
+        blocks = list(page.blocks)
+        for index, block in enumerate(blocks):
+            if block.block_type is not BlockType.TEXT:
+                continue
+            if any(self._center_in(block.bbox, table.bbox) for table in page.tables):
+                continue
+            if _CAPTION_REGEX.match(block.text):
+                blocks[index] = block.with_updates(block_type=BlockType.CAPTION)
+                continue
+            size = self._text_size(block)
+            ratio = size / baseline if baseline else 0.0
+            if ratio >= 1.8:
+                block_type = BlockType.HEADING_1
+            elif ratio >= 1.5:
+                block_type = BlockType.HEADING_2
+            elif ratio >= 1.3 and len(block.text) <= 200:
+                block_type = BlockType.HEADING_3
+            else:
+                continue
+            blocks[index] = block.with_updates(block_type=block_type)
+        return page.with_updates(blocks=tuple(blocks))
+
+    @staticmethod
+    def _text_size(block: OCRBlock) -> float:
+        font_sizes = [
+            line.font_size
+            for line in block.lines
+            if line.font_size is not None and line.font_size > 0
+        ]
+        if font_sizes:
+            return sum(font_sizes) / len(font_sizes)
+        line_heights = [
+            line.bbox.height for line in block.lines if line.bbox.height > 0
+        ]
+        return sum(line_heights) / len(line_heights) if line_heights else 0.0
 
     def group_tables(self, page: OCRPage) -> OCRPage:
         """Fold the text lines lying inside each detected table into one table block."""

@@ -28,10 +28,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.constants import ICON_COLORS
+from src.constants import ICON_COLORS, BlockType
 from src.core.document_loader import SUPPORTED_EXTENSIONS
 from src.core.exceptions import DocumentLoadError, PDFOCRError
-from src.core.models import BoundingBox, OCRPage, OCRTable
+from src.core.layout_analyzer import LayoutAnalyzer
+from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRTable, OCRWord
 from src.core.transcript import apply_transcript
 from src.engines.engine_registry import EngineRegistry
 from src.exporters.exporter_registry import ExporterRegistry
@@ -61,7 +62,11 @@ from src.workers.export_worker import (
     export_filters,
     resolve_export_target,
 )
-from src.workers.region_worker import RegionWorker, native_region_text
+from src.workers.region_worker import (
+    RegionOCRResult,
+    RegionWorker,
+    native_region_text,
+)
 from src.workers.signals import BatchProgress, PageTask
 
 ORGANIZATION_NAME = "PDF OCR"
@@ -465,19 +470,32 @@ class MainWindow(QMainWindow):
             return
         image, dpi = displayed
         text = native_region_text(session.path, session.current_page, region, dpi)
-        if text:
+        engine_id = self._option_text("engine_id", DEFAULT_ENGINE_ID)
+        config = self._engine_config(engine_id)
+        detect_tables = bool(config and config.get("use_tables"))
+        if text and not detect_tables:
             self._on_region_recognised(text)
             return
         worker = RegionWorker(
             image,
             region,
-            self._option_text("engine_id", DEFAULT_ENGINE_ID),
+            engine_id,
             self._option_text("device", "cpu"),
+            config=config,
+            source_path=str(session.path),
+            page_number=session.current_page,
+            preferred_text=text,
+            emit_text=not bool(text),
         )
         worker.signals.finished.connect(self._on_region_recognised)
-        worker.signals.failed.connect(self._on_region_failed)
+        worker.signals.page_finished.connect(self._on_region_page_recognised)
+        worker.signals.failed.connect(
+            lambda message: self._on_region_failed(message, fallback_text=text)
+        )
         self._job_signals.add(worker.signals)
-        self.comparison.show_region_result("Đang nhận diện vùng chọn…")
+        self.comparison.show_region_result(
+            text if text else "Đang nhận diện vùng chọn…"
+        )
         self._jobs.start(worker)
 
     def _on_region_recognised(self, text: str) -> None:
@@ -487,11 +505,62 @@ class MainWindow(QMainWindow):
         )
         self.region_recognised.emit(text)
 
-    def _on_region_failed(self, message: str) -> None:
+    def _on_region_failed(self, message: str, *, fallback_text: str = "") -> None:
         self._job_signals.discard(self.sender())
-        self.comparison.show_region_result("")
+        if not fallback_text:
+            self.comparison.show_region_result("")
         self.report_error(message)
         self.region_failed.emit(message)
+
+    def _on_region_page_recognised(self, result: object) -> None:
+        """Persist detected region tables in the current page for editing/export."""
+        self._job_signals.discard(self.sender())
+        if not isinstance(result, RegionOCRResult):
+            raise TypeError("Kết quả vùng OCR không đúng định dạng.")
+        session = self._session
+        if (
+            session is None
+            or str(session.path) != result.source_path
+            or session.current_page != result.page_number
+        ):
+            return
+        page = session.result(result.page_number)
+        if page is None:
+            return
+        tables = list(page.tables)
+        blocks = list(page.blocks)
+        added = 0
+        for table in result.page.tables:
+            if any(_same_table_region(table, existing) for existing in tables):
+                continue
+            tables.append(table)
+            row_lines = tuple(
+                OCRLine(
+                    words=(OCRWord(" | ".join(row), table.bbox),),
+                    bbox=table.bbox,
+                )
+                for row in table.rows
+                if any(cell.strip() for cell in row)
+            )
+            blocks.append(
+                OCRBlock(
+                    lines=row_lines,
+                    bbox=table.bbox,
+                    block_type=BlockType.TABLE,
+                    reading_order=len(blocks),
+                )
+            )
+            added += 1
+        if not added:
+            return
+        updated = page.with_updates(blocks=tuple(blocks), tables=tuple(tables))
+        session.store(LayoutAnalyzer().analyze(updated, merge_paragraphs=False))
+        if session is self._session:
+            self.guarded(self._show_current_page, title="Hiển thị bảng vùng chọn")
+        self.notifications.notify(
+            f"Đã thêm {added} bảng từ vùng chọn. Có thể chỉnh sửa hoặc xuất Excel.",
+            Severity.SUCCESS,
+        )
 
     def request_settings(self) -> None:
         self.settings_requested.emit()
@@ -760,6 +829,20 @@ def _dropped_documents(mime: QMimeData) -> tuple[Path, ...]:
         return ()
     candidates = (Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile())
     return tuple(path for path in candidates if _is_supported(path))
+
+
+def _same_table_region(first: OCRTable, second: OCRTable) -> bool:
+    """Treat mostly overlapping table boxes as an existing detection."""
+    left = max(first.bbox.x1, second.bbox.x1)
+    top = max(first.bbox.y1, second.bbox.y1)
+    right = min(first.bbox.x2, second.bbox.x2)
+    bottom = min(first.bbox.y2, second.bbox.y2)
+    intersection = max(0.0, right - left) * max(0.0, bottom - top)
+    smaller_area = min(
+        first.bbox.width * first.bbox.height,
+        second.bbox.width * second.bbox.height,
+    )
+    return smaller_area > 0 and intersection / smaller_area >= 0.75
 
 
 _PARAGRAPH_LIST_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")

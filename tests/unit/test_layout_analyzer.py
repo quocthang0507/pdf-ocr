@@ -212,3 +212,38 @@ def test_analyze_can_keep_engine_order_when_reading_order_is_off() -> None:
     result = LayoutAnalyzer().analyze(page, False, reading_order=False)
 
     assert [block.text for block in result.blocks] == ["dưới", "trên"]
+
+
+def test_analyze_classifies_typographic_headings_and_caption() -> None:
+    def sized_block(text: str, top: float, size: float) -> OCRBlock:
+        box = BoundingBox(10, top, 190, top + size * 1.4)
+        line = OCRLine(
+            words=(OCRWord(text, box),),
+            bbox=box,
+            font_size=size,
+        )
+        return OCRBlock(lines=(line,), bbox=box)
+
+    page = OCRPage(
+        page_number=1,
+        width=300,
+        height=300,
+        blocks=(
+            sized_block("Tiêu đề chính", 0, 24),
+            sized_block("Mục lớn", 40, 18),
+            sized_block("Mục nhỏ", 70, 16),
+            sized_block("Đoạn văn bình thường", 100, 12),
+            sized_block("Hình 1. Sơ đồ quy trình", 130, 12),
+            sized_block("Một đoạn khác", 160, 12),
+            sized_block("Đoạn cuối", 190, 12),
+        ),
+    )
+
+    result = LayoutAnalyzer().analyze(page)
+    labels = {block.text: block.block_type for block in result.blocks}
+
+    assert labels["Tiêu đề chính"] is BlockType.HEADING_1
+    assert labels["Mục lớn"] is BlockType.HEADING_2
+    assert labels["Mục nhỏ"] is BlockType.HEADING_3
+    assert labels["Đoạn văn bình thường"] is BlockType.TEXT
+    assert labels["Hình 1. Sơ đồ quy trình"] is BlockType.CAPTION

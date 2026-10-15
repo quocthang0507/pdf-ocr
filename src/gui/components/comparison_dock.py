@@ -76,7 +76,14 @@ def _column_count(blocks: tuple[OCRBlock, ...]) -> int:
     narrow = [
         block
         for block in blocks
-        if block.block_type in (BlockType.TEXT, BlockType.TITLE)
+        if block.block_type
+        in (
+            BlockType.TEXT,
+            BlockType.TITLE,
+            BlockType.HEADING_1,
+            BlockType.HEADING_2,
+            BlockType.HEADING_3,
+        )
     ]
     if not narrow:
         return 0
@@ -486,9 +493,20 @@ class ComparisonDock(QWidget):
         has_tables = bool(page.tables)
         self.table_combo.setVisible(has_tables)
         self.edit_table_button.setVisible(has_tables)
+        heading_count = sum(
+            counts[kind]
+            for kind in (
+                BlockType.TITLE,
+                BlockType.HEADING_1,
+                BlockType.HEADING_2,
+                BlockType.HEADING_3,
+            )
+        )
         self.structure_label.setText(
             f"Bố cục: {_column_count(page.blocks)} cột · "
-            f"{counts[BlockType.TEXT]} đoạn · {counts[BlockType.TITLE]} tiêu đề · "
+            f"{counts[BlockType.TEXT]} đoạn · "
+            f"{heading_count} tiêu đề · "
+            f"{counts[BlockType.CAPTION]} chú thích · "
             f"{len(page.tables)} bảng · {counts[BlockType.IMAGE]} hình"
         )
         self.structure_panel.show()

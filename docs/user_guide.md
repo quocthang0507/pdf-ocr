@@ -125,6 +125,13 @@ Dock **Tùy chọn nhận diện** (bên phải cửa sổ):
 | **Thiết bị** | CPU hay GPU | Để `Tự động phát hiện` |
 | **Độ phân giải** | DPI khi dựng ảnh từ PDF | 300 DPI là mặc định tốt; 400–600 cho chữ rất nhỏ |
 | **Tiền xử lý ảnh** | Bật/tắt từng bộ lọc | Giữ bật tất cả, trừ khi ảnh đã sạch sẵn |
+| **Nhận diện bảng biểu** | Dựng lưới hàng/cột từ bảng | Cần `PaddleOCR`; có thể sửa bảng trước khi xuất |
+| **Thứ tự đọc nhiều cột** | Đọc lần lượt từng cột | Giữ bật để tránh ghép chữ xuyên cột |
+| **Gộp dòng thành đoạn** | Nối các dòng cùng đoạn | Tắt nếu cần giữ riêng từng dòng OCR |
+
+Kết quả có nhãn tiêu đề cấp 1–3 khi cỡ chữ/chiều cao dòng nổi bật rõ so với văn bản thường;
+nhãn chú thích được nhận diện theo tiền tố như `Hình 1` hoặc `Table 2`. Nếu trang không có
+bằng chứng rõ về kiểu chữ, khối vẫn được giữ là đoạn văn thay vì đoán cấp tiêu đề.
 
 Bốn bộ lọc tiền xử lý chạy theo thứ tự: **tự xoay đúng hướng → làm thẳng ảnh nghiêng →
 cắt viền thừa → tăng cường chất lượng ảnh**.
@@ -200,6 +207,9 @@ Khi bạn chỉ cần một đoạn hoặc một bảng trong trang:
 4. Bấm `Ctrl+R` lần nữa để tắt chế độ vẽ và quay lại kéo thả ảnh như thường.
 
 Vùng chọn luôn được cắt gọn trong phạm vi trang, kéo theo chiều nào cũng cho hình chữ nhật hợp lệ.
+Nếu đang chọn **PaddleOCR** và bật **Nhận diện bảng biểu**, bảng tìm thấy trong vùng sẽ được thêm vào
+kết quả trang hiện tại, hiện trong danh sách bảng và có thể chỉnh sửa hoặc xuất ra Excel. Với PDF có
+lớp chữ, nội dung chữ dùng trực tiếp từ PDF; phần nhận diện cấu trúc bảng vẫn chạy nền.
 
 ---
 

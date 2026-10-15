@@ -254,7 +254,10 @@ class PipelineService:
         page_type = document.page_types[page_number - 1]
         index = page_number - 1
         if page_type == PageType.TEXT_BASED:
-            return self._classifier.extract_page(document.pdf[index], page_number, dpi)
+            native = self._classifier.extract_page(
+                document.pdf[index], page_number, dpi
+            )
+            return self._analyze_layout(native, options or PageOptions())
         loaded = document.loader.load_page(page_number, dpi)
         recognized = self._ocr_page(
             loaded, engine_ids, device, config, stack, engines, options
@@ -332,9 +335,8 @@ class PipelineService:
             for index, page_type in enumerate(page_types):
                 page_number = index + 1
                 if page_type == PageType.TEXT_BASED:
-                    pages.append(
-                        self._classifier.extract_page(pdf[index], page_number, dpi)
-                    )
+                    native = self._classifier.extract_page(pdf[index], page_number, dpi)
+                    pages.append(self._analyze_layout(native, PageOptions()))
                     continue
                 loaded = loader.load_page(page_number, dpi)
                 recognized = self._ocr_page(

@@ -77,6 +77,35 @@ def test_exports_headings_paragraphs_and_page_breaks(tmp_path: Path) -> None:
     assert 'w:type="page"' in exported.element.xml
 
 
+def test_exports_heading_levels_and_captions_with_word_semantic_styles(
+    tmp_path: Path,
+) -> None:
+    page = OCRPage(
+        1,
+        600,
+        800,
+        blocks=(
+            _block("Chương", 20, block_type=BlockType.HEADING_1),
+            _block("Mục", 80, block_type=BlockType.HEADING_2),
+            _block("Tiểu mục", 140, block_type=BlockType.HEADING_3),
+            _block("Hình 1. Sơ đồ", 200, block_type=BlockType.CAPTION),
+        ),
+    )
+    destination = tmp_path / "semantic-layout.docx"
+
+    DOCXExporter().export(OCRDocument((page,)), destination)
+
+    visible = [
+        paragraph for paragraph in Document(destination).paragraphs if paragraph.text
+    ]
+    assert [paragraph.style.name for paragraph in visible] == [
+        "Heading 1",
+        "Heading 2",
+        "Heading 3",
+        "Caption",
+    ]
+
+
 def test_exports_styled_tables_and_merged_cells(tmp_path: Path) -> None:
     destination = tmp_path / "tables.docx"
 

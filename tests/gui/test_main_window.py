@@ -9,7 +9,7 @@ from PySide6.QtCore import QMimeData, QPoint, QPointF, QSettings, Qt, QUrl
 from PySide6.QtGui import QDragEnterEvent, QDropEvent, QKeySequence
 
 from src.core.exceptions import DocumentLoadError
-from src.core.models import BoundingBox
+from src.core.models import BoundingBox, OCRPage, OCRTable
 from src.gui.components.menu_bar import MAX_RECENT_FILES
 from src.gui.main_window import MainWindow
 
@@ -808,3 +808,29 @@ def test_a_failed_region_recognition_is_reported(
     assert window.comparison.region_result() == ""
     toasts = window.notifications.visible_toasts()
     assert any(toast.severity.name == "ERROR" for toast in toasts)
+
+
+def test_tables_recognised_in_a_region_are_saved_on_the_current_page(
+    qtbot, window: MainWindow, tmp_path: Path
+) -> None:
+    from src.workers.region_worker import RegionOCRResult
+
+    document = _pdf(tmp_path)
+    window.open_path(document)
+    assert window.document_session is not None
+    page = OCRPage(page_number=1, width=600, height=300)
+    window.document_session.store(page)
+    table = OCRTable(
+        rows=(("Item", "Qty"), ("Paper", "2")),
+        bbox=BoundingBox(20, 30, 200, 90),
+    )
+
+    window._on_region_page_recognised(
+        RegionOCRResult(str(document.resolve()), 1, page.with_updates(tables=(table,)))
+    )
+
+    updated = window.document_session.result(1)
+    assert updated is not None
+    assert updated.tables == (table,)
+    assert any(block.block_type.value == "table" for block in updated.blocks)
+    assert "Paper | 2" in window.comparison.transcript()

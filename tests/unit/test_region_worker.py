@@ -9,7 +9,14 @@ import pymupdf
 import pytest
 
 from src.core.exceptions import OCREngineError
-from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRWord
+from src.core.models import (
+    BoundingBox,
+    OCRBlock,
+    OCRLine,
+    OCRPage,
+    OCRTable,
+    OCRWord,
+)
 from src.engines.base_engine import BaseOCREngine, ConfigField
 from src.engines.engine_registry import EngineRegistry
 from src.workers.region_worker import RegionWorker, native_region_text
@@ -56,6 +63,7 @@ def probe_engine():
     class ProbeEngine(BaseOCREngine):
         CONFIG_SCHEMA = {
             "device": ConfigField("cpu", lambda value: isinstance(value, str)),
+            "use_tables": ConfigField(False, lambda value: isinstance(value, bool)),
         }
 
         def _load_model(self) -> None:
@@ -71,11 +79,17 @@ def probe_engine():
             calls.append(image.shape[:2])
             box = BoundingBox(0, 0, image.shape[1], image.shape[0])
             line = OCRLine(words=(OCRWord("vùng", box), OCRWord("chọn", box)), bbox=box)
+            tables = (
+                (OCRTable(rows=(("ô",),), bbox=BoundingBox(5, 5, 30, 20)),)
+                if self._config["use_tables"]
+                else ()
+            )
             return OCRPage(
                 page_number=page_number,
                 width=float(image.shape[1]),
                 height=float(image.shape[0]),
                 blocks=(OCRBlock(lines=(line,), bbox=box),),
+                tables=tables,
             )
 
     snapshot = EngineRegistry.snapshot()
@@ -93,6 +107,29 @@ def test_the_region_is_cropped_before_recognition(qtbot, probe_engine) -> None:
 
     assert blocker.args == ["vùng chọn"]
     assert probe_engine == [(30, 60)]
+
+
+def test_detected_region_tables_are_rebased_to_page_coordinates(
+    qtbot, probe_engine
+) -> None:
+    image = np.full((100, 200, 3), 255, dtype=np.uint8)
+    worker = RegionWorker(
+        image,
+        BoundingBox(10, 20, 70, 50),
+        ENGINE_ID,
+        "cpu",
+        config={"use_tables": True},
+        source_path="document.pdf",
+        page_number=3,
+    )
+
+    with qtbot.waitSignal(worker.signals.page_finished) as blocker:
+        worker.run()
+
+    result = blocker.args[0]
+    assert result.source_path == "document.pdf"
+    assert result.page_number == 3
+    assert result.page.tables[0].bbox == BoundingBox(15, 25, 40, 40)
 
 
 def test_a_recognition_failure_is_reported(qtbot, probe_engine) -> None:

@@ -8,6 +8,10 @@ LOW_CONFIDENCE_THRESHOLD = 0.8
 class BlockType(str, Enum):
     TEXT = "text"
     TITLE = "title"
+    HEADING_1 = "heading_1"
+    HEADING_2 = "heading_2"
+    HEADING_3 = "heading_3"
+    CAPTION = "caption"
     TABLE = "table"
     IMAGE = "image"
 
@@ -22,6 +26,10 @@ class PageType(str, Enum):
 BLOCK_TYPE_COLORS: dict[BlockType, str] = {
     BlockType.TEXT: "#2563eb",
     BlockType.TITLE: "#d946ef",
+    BlockType.HEADING_1: "#c026d3",
+    BlockType.HEADING_2: "#a21caf",
+    BlockType.HEADING_3: "#86198f",
+    BlockType.CAPTION: "#64748b",
     BlockType.TABLE: "#059669",
     BlockType.IMAGE: "#ea580c",
 }

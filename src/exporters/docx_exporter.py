@@ -71,9 +71,18 @@ class DOCXExporter(BaseExporter):
             if index:
                 paragraph.add_run().add_break()
             paragraph.add_run(line.text)
+        if block.block_type is BlockType.CAPTION:
+            paragraph.style = "Caption"
 
     @staticmethod
     def _heading_style(block: OCRBlock) -> str:
+        heading_styles = {
+            BlockType.HEADING_1: "Heading 1",
+            BlockType.HEADING_2: "Heading 2",
+            BlockType.HEADING_3: "Heading 3",
+        }
+        if block.block_type in heading_styles:
+            return heading_styles[block.block_type]
         if block.block_type != BlockType.TITLE:
             return "Normal"
         sizes = [line.font_size for line in block.lines if line.font_size is not None]
