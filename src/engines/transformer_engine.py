@@ -7,7 +7,14 @@ from typing import Any, cast
 from src.core.models import OCRPage
 from src.engines.base_engine import BaseOCREngine, ConfigField
 from src.engines.engine_registry import register_engine
-from src.engines.result_builder import build_page, image_size, rectangle_polygon
+from src.engines.result_builder import (
+    LineResult,
+    as_pil_image,
+    build_page,
+    image_size,
+    rectangle_polygon,
+    segment_lines,
+)
 from src.services.weights_manager import ModelWeightsManager
 
 _CHECKPOINTS = {
@@ -83,9 +90,57 @@ class TransformerOCREngine(BaseOCREngine):
             return "cpu"
         return "cpu"
 
+    def _recognize_multi_line(
+        self, image: object, width: int, height: int
+    ) -> list[LineResult]:
+        boxes = segment_lines(image)
+        if not boxes:
+            return []
+        crops: list[Any] = []
+        pad = 2
+        pil_image = as_pil_image(image)
+        for x, y, w, h in boxes:
+            crop_box = (
+                max(0, x - pad),
+                max(0, y - pad),
+                min(width, x + w + pad),
+                min(height, y + h + pad),
+            )
+            crops.append(pil_image.crop(crop_box))
+
+        if self._processor is None or self._model is None:
+            return []
+        pixels = self._processor(images=crops, return_tensors="pt").pixel_values
+        pixels = pixels.to(self._resolved_device())
+        max_new_tokens = cast(int, self._config["max_new_tokens"])
+        timeout_seconds = cast(float, self._config["timeout_seconds"])
+        generated = self._model.generate(
+            pixels,
+            max_new_tokens=max_new_tokens,
+            max_time=float(timeout_seconds),
+        )
+        decoded = self._processor.batch_decode(generated, skip_special_tokens=True)
+        lines: list[LineResult] = []
+        for (x, y, w, h), text in zip(boxes, decoded, strict=False):
+            stripped = text.strip()
+            if stripped:
+                poly = (
+                    (float(x), float(y)),
+                    (float(x + w), float(y)),
+                    (float(x + w), float(y + h)),
+                    (float(x), float(y + h)),
+                )
+                lines.append((poly, stripped, 1.0))
+        return lines
+
     def _recognize(self, image: object, page_number: int) -> OCRPage:
         if self._processor is None or self._model is None:
             raise RuntimeError("TrOCR model is unavailable.")
+        width, height = image_size(image)
+        if height > 80:
+            lines = self._recognize_multi_line(image, width, height)
+            if lines:
+                return build_page(image, page_number, lines)
         pixels = self._processor(images=image, return_tensors="pt").pixel_values
         pixels = pixels.to(self._resolved_device())
         max_new_tokens = cast(int, self._config["max_new_tokens"])
@@ -97,7 +152,6 @@ class TransformerOCREngine(BaseOCREngine):
         )
         decoded = self._processor.batch_decode(generated, skip_special_tokens=True)
         text = decoded[0] if decoded else ""
-        width, height = image_size(image)
         return build_page(
             image,
             page_number,

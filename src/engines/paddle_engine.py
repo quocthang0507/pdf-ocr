@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import inspect
+import os
 from collections.abc import Callable, Mapping
 from html.parser import HTMLParser
 from importlib import import_module
@@ -93,7 +94,36 @@ class PaddleOCREngine(BaseOCREngine):
         self._table_model: Any | None = None
         super().__init__(weights_manager, config)
 
+    @staticmethod
+    def _ensure_cpu_compatibility() -> None:
+        try:
+            inference: Any = import_module("paddle.inference")
+            if getattr(inference, "_pdf_ocr_cpu_patched", False):
+                return
+            orig_create = getattr(inference, "create_predictor", None)
+            if orig_create is None:
+                return
+
+            def _patched_create(config: Any) -> Any:
+                if hasattr(config, "disable_onednn"):
+                    config.disable_onednn()
+                if hasattr(config, "disable_mkldnn"):
+                    config.disable_mkldnn()
+                return orig_create(config)
+
+            inference.create_predictor = _patched_create
+            inference._pdf_ocr_cpu_patched = True
+        except Exception:
+            pass
+
     def _load_model(self) -> None:
+        try:
+            import_module("torch")
+        except Exception:
+            pass
+        os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
+        if not self._uses_gpu():
+            self._ensure_cpu_compatibility()
         paddleocr = import_module("paddleocr")
         legacy_options = {
             "lang": self._config["lang"],
@@ -123,9 +153,12 @@ class PaddleOCREngine(BaseOCREngine):
                     if is_current_table
                     else {"use_gpu": self._uses_gpu()}
                 )
-                self._table_model = table_factory(
-                    **_supported_options(table_factory, table_options)
-                )
+                try:
+                    self._table_model = table_factory(
+                        **_supported_options(table_factory, table_options)
+                    )
+                except Exception:
+                    self._table_model = None
 
     def _uses_gpu(self) -> bool:
         return str(self._config["device"]).startswith("cuda")

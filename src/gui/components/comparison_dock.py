@@ -13,11 +13,13 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QShortcut, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
     QPlainTextEdit,
     QPushButton,
+    QScrollBar,
     QSpinBox,
     QSplitter,
     QStyle,
@@ -69,6 +71,32 @@ def _render(page: OCRPage) -> tuple[str, tuple[TextSpan, ...], tuple[TextSpan, .
 _LIST_MARKER_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
 
 
+def _column_count(blocks: tuple[OCRBlock, ...]) -> int:
+    """Estimate text columns as the widest set of side-by-side narrow blocks."""
+    narrow = [
+        block
+        for block in blocks
+        if block.block_type in (BlockType.TEXT, BlockType.TITLE)
+    ]
+    if not narrow:
+        return 0
+    page_left = min(block.bbox.x1 for block in narrow)
+    page_right = max(block.bbox.x2 for block in narrow)
+    span = page_right - page_left
+    columns: list[tuple[float, float]] = []
+    for block in sorted(narrow, key=lambda item: item.bbox.x1):
+        if span > 0 and block.bbox.width >= span * 0.8:
+            continue
+        for index, (left, right) in enumerate(columns):
+            overlap = min(right, block.bbox.x2) - max(left, block.bbox.x1)
+            if overlap > 0.5 * min(right - left, block.bbox.width):
+                columns[index] = (min(left, block.bbox.x1), max(right, block.bbox.x2))
+                break
+        else:
+            columns.append((block.bbox.x1, block.bbox.x2))
+    return max(1, len(columns))
+
+
 def _should_break_line(prev_text: str, curr_text: str) -> bool:
     if prev_text.endswith(":"):
         return True
@@ -116,6 +144,7 @@ class ComparisonDock(QWidget):
     transcript_edited = Signal(str)
     table_edited = Signal(int, OCRTable)
     region_ocr_requested = Signal(BoundingBox)
+    region_mode_cancelled = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -139,6 +168,21 @@ class ComparisonDock(QWidget):
         # A long selection scrolls inside the panel instead of hiding the editor.
         self.region_label.setMaximumHeight(_REGION_RESULT_MAX_HEIGHT)
         self.region_panel.hide()
+        self.structure_panel = QFrame(self)
+        self.structure_panel.setObjectName("structure_panel")
+        self.structure_label = QLabel(self.structure_panel)
+        self.structure_label.setObjectName("structure_summary")
+        self.structure_label.setWordWrap(True)
+        self.table_combo = QComboBox(self.structure_panel)
+        self.table_combo.setObjectName("table_combo")
+        self.table_combo.setToolTip("Chọn bảng biểu để xem trên trang")
+        self.edit_table_button = QPushButton("Chỉnh sửa bảng…", self.structure_panel)
+        self.edit_table_button.setObjectName("edit_table_button")
+        self.edit_table_button.setToolTip(
+            "Sửa từng ô của bảng trước khi xuất ra Excel/Word "
+            "(hoặc nhấp đúp vào khung bảng trên trang)"
+        )
+        self.structure_panel.hide()
         self._block_spans: tuple[TextSpan, ...] = ()
         self._page: OCRPage | None = None
         self._current_page = 0
@@ -157,6 +201,11 @@ class ComparisonDock(QWidget):
         self.page_spin.setToolTip("Đi tới trang")
         self.page_spin.setRange(0, 0)
         self.page_spin.setEnabled(False)
+        self.page_slider = QScrollBar(Qt.Orientation.Horizontal, self)
+        self.page_slider.setObjectName("page_slider")
+        self.page_slider.setToolTip("Cuộn để chuyển trang")
+        self.page_slider.setRange(0, 0)
+        self.page_slider.setEnabled(False)
         self.page_label = QLabel("/ 0", self)
         self.page_label.setObjectName("page_indicator")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -190,12 +239,15 @@ class ComparisonDock(QWidget):
         self.canvas.block_selected.connect(self._focus_text_block)
         self.canvas.block_activated.connect(self.edit_block_table)
         self.canvas.region_selected.connect(self.region_ocr_requested)
+        self.canvas.page_step_requested.connect(self._on_page_step_requested)
+        self.canvas.region_mode_cancelled.connect(self.region_mode_cancelled)
         self.canvas.zoom_changed.connect(self._show_zoom)
         self.editor.cursorPositionChanged.connect(self._focus_canvas_block)
         self.editor.textChanged.connect(self._publish_transcript)
         self.prev_page_btn.clicked.connect(self._prev_page)
         self.next_page_btn.clicked.connect(self._next_page)
         self.page_spin.editingFinished.connect(self._jump_to_spin_page)
+        self.page_slider.valueChanged.connect(self._jump_to_slider_page)
         self.zoom_in_btn.clicked.connect(self.canvas.zoom_in)
         self.zoom_out_btn.clicked.connect(self.canvas.zoom_out)
         self.zoom_reset_btn.clicked.connect(self.canvas.reset_zoom)
@@ -219,6 +271,7 @@ class ComparisonDock(QWidget):
         nav_layout.addStretch(1)
         nav_layout.addWidget(self.prev_page_btn)
         nav_layout.addWidget(self.page_spin)
+        nav_layout.addWidget(self.page_slider)
         nav_layout.addWidget(self.page_label)
         nav_layout.addWidget(self.next_page_btn)
         nav_layout.addStretch(1)
@@ -228,7 +281,15 @@ class ComparisonDock(QWidget):
         text_layout = QVBoxLayout(text_pane)
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.addWidget(self.editor, 1)
+        text_layout.addWidget(self.structure_panel)
         text_layout.addWidget(self.region_panel)
+        structure_layout = QHBoxLayout(self.structure_panel)
+        structure_layout.setContentsMargins(8, 4, 8, 4)
+        structure_layout.addWidget(self.structure_label, 1)
+        structure_layout.addWidget(self.table_combo)
+        structure_layout.addWidget(self.edit_table_button)
+        self.table_combo.currentIndexChanged.connect(self._show_table_on_canvas)
+        self.edit_table_button.clicked.connect(self.edit_selected_table)
         header = QHBoxLayout()
         header.addWidget(self.region_title)
         header.addStretch(1)
@@ -272,6 +333,12 @@ class ComparisonDock(QWidget):
 
     # -- page navigation --------------------------------------------------
 
+    def _on_page_step_requested(self, step: int) -> None:
+        if step > 0:
+            self._next_page()
+        elif step < 0:
+            self._prev_page()
+
     def _prev_page(self) -> None:
         if self._current_page > 1:
             self.page_change_requested.emit(self._current_page - 1)
@@ -282,6 +349,10 @@ class ComparisonDock(QWidget):
 
     def _jump_to_spin_page(self) -> None:
         page = self.page_spin.value()
+        if page != self._current_page and self._total_pages > 0:
+            self.page_change_requested.emit(page)
+
+    def _jump_to_slider_page(self, page: int) -> None:
         if page != self._current_page and self._total_pages > 0:
             self.page_change_requested.emit(page)
 
@@ -298,6 +369,11 @@ class ComparisonDock(QWidget):
         self.page_spin.setValue(max(1, self._current_page))
         self.page_spin.setEnabled(self._total_pages > 0)
         self.page_spin.blockSignals(False)
+        self.page_slider.blockSignals(True)
+        self.page_slider.setRange(1, max(1, self._total_pages))
+        self.page_slider.setValue(max(1, self._current_page))
+        self.page_slider.setEnabled(self._total_pages > 1)
+        self.page_slider.blockSignals(False)
         self.prev_page_btn.setEnabled(self._current_page > 1)
         self.next_page_btn.setEnabled(self._current_page < self._total_pages)
 
@@ -323,6 +399,7 @@ class ComparisonDock(QWidget):
             self.editor.setPlainText(text)
             self.editor.setExtraSelections([])
         self.region_panel.hide()
+        self._refresh_structure()
 
     def set_page(self, page: OCRPage, image: np.ndarray) -> None:
         """Show one recognised page beside the image it was recognised from."""
@@ -337,6 +414,7 @@ class ComparisonDock(QWidget):
             self.editor.setPlainText(transcript)
             self._highlight(uncertain)
         self.region_panel.hide()
+        self._refresh_structure()
 
     def clear(self) -> None:
         """Drop both panes so the next document starts from an empty state."""
@@ -350,6 +428,7 @@ class ComparisonDock(QWidget):
             self.editor.setExtraSelections([])
         self.region_label.clear()
         self.region_panel.hide()
+        self._refresh_structure()
 
     def transcript(self) -> str:
         return self.editor.toPlainText()
@@ -363,12 +442,70 @@ class ComparisonDock(QWidget):
     def edit_block_table(self, index: int) -> None:
         """Open the grid editor for the table drawn under this layout block."""
         table_index = self._table_for_block(index)
-        if table_index is None or self._page is None:
+        if table_index is not None:
+            self.edit_table(table_index)
+
+    def edit_selected_table(self) -> None:
+        """Edit the table picked in the list, or the only one on the page."""
+        position = self.table_combo.currentIndex()
+        if position >= 0:
+            self.edit_table(position)
+
+    def edit_table(self, table_index: int) -> None:
+        """Open the grid editor for one table of the current page."""
+        if self._page is None or not 0 <= table_index < len(self._page.tables):
             return
         editor = TableEditorDialog(self._page.tables[table_index], self)
         editor.table_committed.connect(partial(self._publish_table_edit, table_index))
         self.table_editor = editor
         editor.open()
+
+    def table_count(self) -> int:
+        return len(self._page.tables) if self._page is not None else 0
+
+    def set_layout_visible(self, visible: bool) -> None:
+        """Show or hide the coloured layout frames drawn over the page."""
+        self.canvas.set_blocks_visible(visible)
+
+    def _refresh_structure(self) -> None:
+        """Summarise what was recognised on the page and list its tables."""
+        page = self._page
+        self.table_combo.blockSignals(True)
+        self.table_combo.clear()
+        if page is None:
+            self.table_combo.blockSignals(False)
+            self.structure_panel.hide()
+            return
+        counts = {kind: 0 for kind in BlockType}
+        for block in page.blocks:
+            counts[block.block_type] += 1
+        for position, table in enumerate(page.tables, start=1):
+            columns = len(table.rows[0]) if table.rows else 0
+            self.table_combo.addItem(f"Bảng {position} ({len(table.rows)}×{columns})")
+        self.table_combo.blockSignals(False)
+        has_tables = bool(page.tables)
+        self.table_combo.setVisible(has_tables)
+        self.edit_table_button.setVisible(has_tables)
+        self.structure_label.setText(
+            f"Bố cục: {_column_count(page.blocks)} cột · "
+            f"{counts[BlockType.TEXT]} đoạn · {counts[BlockType.TITLE]} tiêu đề · "
+            f"{len(page.tables)} bảng · {counts[BlockType.IMAGE]} hình"
+        )
+        self.structure_panel.show()
+
+    def _show_table_on_canvas(self, position: int) -> None:
+        """Highlight the table picked in the list on the page image."""
+        block_index = self._block_for_table(position)
+        if block_index is not None:
+            self.canvas.focus_on_block(block_index)
+
+    def _block_for_table(self, position: int) -> int | None:
+        if self._page is None or not 0 <= position < len(self._page.tables):
+            return None
+        for index in range(len(self._page.blocks)):
+            if self._table_for_block(index) == position:
+                return index
+        return None
 
     def _table_for_block(self, index: int) -> int | None:
         """Match a table block to the extracted table drawn inside it."""
@@ -387,6 +524,12 @@ class ComparisonDock(QWidget):
         return None
 
     def _publish_table_edit(self, index: int, table: OCRTable) -> None:
+        if self._page is not None and 0 <= index < len(self._page.tables):
+            tables = list(self._page.tables)
+            tables[index] = table
+            self._page = self._page.with_updates(tables=tuple(tables))
+            self._refresh_structure()
+            self.table_combo.setCurrentIndex(index)
         self.table_edited.emit(index, table)
 
     # -- region results ---------------------------------------------------

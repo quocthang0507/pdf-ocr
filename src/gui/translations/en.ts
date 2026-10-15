@@ -100,6 +100,22 @@
         <translation>Recognise the text of the open document.</translation>
     </message>
     <message>
+        <source>Chỉnh sửa &amp;bảng biểu…</source>
+        <translation>Edit &amp;table…</translation>
+    </message>
+    <message>
+        <source>Sửa các ô của bảng đã nhận diện trên trang hiện tại.</source>
+        <translation>Edit the cells of a recognised table on the current page.</translation>
+    </message>
+    <message>
+        <source>Hiện khung &amp;bố cục</source>
+        <translation>Show &amp;layout frames</translation>
+    </message>
+    <message>
+        <source>Bật/tắt khung màu của đoạn, tiêu đề, bảng và hình trên trang.</source>
+        <translation>Toggle the coloured frames of paragraphs, titles, tables and figures.</translation>
+    </message>
+    <message>
         <source>Chọn &amp;vùng OCR</source>
         <translation>Select OCR &amp;region</translation>
     </message>

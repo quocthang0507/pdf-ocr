@@ -251,3 +251,14 @@ def test_render_joins_paragraph_lines_smoothly(dock: ComparisonDock) -> None:
 
     dock.set_page(page, _image(400, 400))
     assert dock.transcript() == "Dòng thứ nhất tiếp"
+
+
+def test_page_slider_navigation(dock: ComparisonDock, qtbot) -> None:
+    dock.set_page_info(current=1, total=5)
+    assert dock.page_slider.isEnabled() is True
+    assert dock.page_slider.value() == 1
+    assert dock.page_slider.maximum() == 5
+
+    with qtbot.waitSignal(dock.page_change_requested) as blocker:
+        dock.page_slider.setValue(4)
+    assert blocker.args == [4]

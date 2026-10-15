@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import time
 from collections.abc import Sequence
 
 import numpy as np
@@ -9,6 +10,7 @@ from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QKeyEvent,
     QMouseEvent,
     QPainter,
     QPen,
@@ -88,6 +90,8 @@ class DocumentCanvas(QGraphicsView):
     block_activated = Signal(int)
     region_selected = Signal(BoundingBox)
     zoom_changed = Signal(float)
+    page_step_requested = Signal(int)
+    region_mode_cancelled = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -103,7 +107,9 @@ class DocumentCanvas(QGraphicsView):
         self._region_item: QGraphicsRectItem | None = None
         self._region_origin: QPointF | None = None
         self._region_mode = False
+        self._blocks_visible = True
         self._zoom = 1.0
+        self._last_page_step_time = 0.0
         self.scene().selectionChanged.connect(self._publish_selection)
 
     # -- page content -----------------------------------------------------
@@ -126,8 +132,18 @@ class DocumentCanvas(QGraphicsView):
             if not isinstance(block, OCRBlock):
                 raise ValueError("Danh sách khối phải chứa đối tượng OCRBlock.")
             item = BlockItem(index, block)
+            item.setVisible(self._blocks_visible)
             self.scene().addItem(item)
             self._block_items.append(item)
+
+    def set_blocks_visible(self, visible: bool) -> None:
+        """Show or hide the layout frames, remembering it for the next page."""
+        self._blocks_visible = visible
+        for item in self._block_items:
+            item.setVisible(visible)
+
+    def blocks_visible(self) -> bool:
+        return self._blocks_visible
 
     def clear_page(self) -> None:
         """Drop every page item so a new document starts from a clean scene."""
@@ -295,13 +311,43 @@ class DocumentCanvas(QGraphicsView):
         if index is not None:
             self.block_activated.emit(index)
 
+    def keyPressEvent(self, event: QKeyEvent) -> None:  # noqa: N802 - Qt override
+        if event.key() == Qt.Key.Key_Escape and self._region_mode:
+            self.set_region_mode(False)
+            self.region_mode_cancelled.emit()
+            event.accept()
+            return
+        super().keyPressEvent(event)
+
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802 - Qt override
         steps = event.angleDelta().y()
         if steps == 0:
             super().wheelEvent(event)
             return
-        self._apply_zoom(self._zoom * (ZOOM_STEP ** (steps / 120)))
-        event.accept()
+
+        if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
+            self._apply_zoom(self._zoom * (ZOOM_STEP ** (steps / 120)))
+            event.accept()
+            return
+
+        v_bar = self.verticalScrollBar()
+        at_bottom = v_bar.value() >= v_bar.maximum()
+        at_top = v_bar.value() <= v_bar.minimum()
+
+        current_time = time.monotonic()
+        if current_time - self._last_page_step_time > 0.35:
+            if steps < 0 and at_bottom:
+                self._last_page_step_time = current_time
+                self.page_step_requested.emit(1)
+                event.accept()
+                return
+            if steps > 0 and at_top:
+                self._last_page_step_time = current_time
+                self.page_step_requested.emit(-1)
+                event.accept()
+                return
+
+        super().wheelEvent(event)
 
 
 def _region_style() -> tuple[QPen, QBrush]:

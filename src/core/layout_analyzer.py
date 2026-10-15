@@ -15,14 +15,70 @@ class LayoutAnalyzer:
             raise ValueError("Khoảng trắng tối thiểu không được âm.")
         self._minimum_gap = float(minimum_gap)
 
-    def analyze(self, page: OCRPage, merge_paragraphs: bool = True) -> OCRPage:
-        """Return a new page whose blocks carry a contiguous reading order."""
+    def analyze(
+        self,
+        page: OCRPage,
+        merge_paragraphs: bool = True,
+        *,
+        reading_order: bool = True,
+    ) -> OCRPage:
+        """Return a new page whose blocks carry a contiguous reading order.
+
+        With `reading_order` off the engine's own order is kept, so multi-column
+        sorting is skipped; tables are still grouped into their own blocks.
+        """
         if not isinstance(page, OCRPage):
             raise TypeError("page phải là đối tượng OCRPage.")
-        sorted_blocks = self.sort_blocks(page.blocks)
+        grouped = self.group_tables(page)
+        if reading_order:
+            blocks = self.sort_blocks(grouped.blocks)
+        else:
+            blocks = grouped.blocks
         if merge_paragraphs:
-            sorted_blocks = self.merge_paragraphs(sorted_blocks)
-        return page.with_updates(blocks=sorted_blocks)
+            blocks = self.merge_paragraphs(blocks)
+        elif not reading_order:
+            blocks = tuple(
+                block.with_updates(reading_order=order)
+                for order, block in enumerate(blocks)
+            )
+        return page.with_updates(blocks=blocks)
+
+    def group_tables(self, page: OCRPage) -> OCRPage:
+        """Fold the text lines lying inside each detected table into one table block."""
+        if not page.tables:
+            return page
+        blocks = list(page.blocks)
+        for table in page.tables:
+            inside = [
+                block
+                for block in blocks
+                if block.block_type is not BlockType.TABLE
+                and self._center_in(block.bbox, table.bbox)
+            ]
+            already = any(
+                block.block_type is BlockType.TABLE
+                and self._center_in(table.bbox, block.bbox)
+                for block in blocks
+            )
+            if already:
+                continue
+            lines = tuple(line for block in inside for line in block.lines)
+            first = min(
+                (index for index, block in enumerate(blocks) if block in inside),
+                default=len(blocks),
+            )
+            blocks = [block for block in blocks if block not in inside]
+            blocks.insert(
+                min(first, len(blocks)),
+                OCRBlock(lines=lines, bbox=table.bbox, block_type=BlockType.TABLE),
+            )
+        return page.with_updates(blocks=tuple(blocks))
+
+    @staticmethod
+    def _center_in(inner: BoundingBox, outer: BoundingBox) -> bool:
+        centre_x = (inner.x1 + inner.x2) / 2
+        centre_y = (inner.y1 + inner.y2) / 2
+        return outer.x1 <= centre_x <= outer.x2 and outer.y1 <= centre_y <= outer.y2
 
     def merge_paragraphs(self, blocks: Sequence[OCRBlock]) -> tuple[OCRBlock, ...]:
         """Group consecutive lines in reading order into paragraph blocks."""

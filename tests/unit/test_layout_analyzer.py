@@ -176,3 +176,39 @@ def test_merge_paragraphs_handles_hyphenation_at_line_end() -> None:
 
     assert len(merged) == 1
     assert merged[0].text == "Hệ thống nhận-diện văn bản tự động."
+
+
+def test_analyze_groups_lines_inside_a_table_into_one_table_block() -> None:
+    from src.core.models import OCRTable
+
+    table = OCRTable(rows=(("a", "b"),), bbox=BoundingBox(0, 100, 200, 140))
+    page = OCRPage(
+        page_number=1,
+        width=300,
+        height=300,
+        blocks=(
+            _block("Tiêu đề", (0, 0, 200, 20)),
+            _block("a", (10, 105, 50, 120)),
+            _block("b", (110, 105, 150, 120)),
+        ),
+        tables=(table,),
+    )
+
+    result = LayoutAnalyzer().analyze(page)
+
+    kinds = [block.block_type for block in result.blocks]
+    assert kinds == [BlockType.TEXT, BlockType.TABLE]
+    assert len(result.blocks[1].lines) == 2
+
+
+def test_analyze_can_keep_engine_order_when_reading_order_is_off() -> None:
+    page = OCRPage(
+        page_number=1,
+        width=300,
+        height=300,
+        blocks=(_block("dưới", (0, 200, 100, 220)), _block("trên", (0, 0, 100, 20))),
+    )
+
+    result = LayoutAnalyzer().analyze(page, False, reading_order=False)
+
+    assert [block.text for block in result.blocks] == ["dưới", "trên"]

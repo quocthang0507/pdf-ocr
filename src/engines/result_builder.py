@@ -7,6 +7,9 @@ from collections.abc import Iterable, Sequence
 from importlib import import_module
 from typing import Any, cast
 
+import cv2
+import numpy as np
+
 from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRTable, OCRWord
 
 LineResult = tuple[Sequence[Sequence[float]], str, float]
@@ -77,6 +80,53 @@ def safe_confidence(value: object) -> float:
     if not math.isfinite(confidence):
         return 0.0
     return min(1.0, max(0.0, confidence))
+
+
+def to_grayscale(image: object) -> np.ndarray | None:
+    if isinstance(image, np.ndarray):
+        if image.ndim == 3 and image.shape[2] == 4:
+            return cv2.cvtColor(image, cv2.COLOR_RGBA2GRAY)
+        if image.ndim == 3 and image.shape[2] == 3:
+            return cv2.cvtColor(image, cv2.COLOR_RGB2GRAY)
+        if image.ndim == 2:
+            return image
+        return None
+    pil_image = as_pil_image(image).convert("L")
+    return np.array(pil_image)
+
+
+def segment_lines(image: object) -> list[tuple[int, int, int, int]]:
+    """Segment an image into horizontal text line bounding boxes (x, y, w, h)."""
+    gray = to_grayscale(image)
+    if gray is None or gray.size == 0:
+        return []
+
+    height, width = gray.shape[:2]
+    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+
+    h_rule = cv2.getStructuringElement(cv2.MORPH_RECT, (max(40, int(width * 0.03)), 1))
+    v_rule = cv2.getStructuringElement(cv2.MORPH_RECT, (1, max(40, int(height * 0.02))))
+    h_lines = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, h_rule, iterations=2)
+    v_lines = cv2.morphologyEx(thresh, cv2.MORPH_OPEN, v_rule, iterations=2)
+    text_only = cv2.subtract(thresh, cv2.add(h_lines, v_lines))
+
+    kw = max(20, int(width * 0.02))
+    kh = max(2, int(height * 0.001))
+    line_kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (kw, kh))
+    dilated = cv2.dilate(text_only, line_kernel, iterations=1)
+
+    contours, _ = cv2.findContours(dilated, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+    boxes: list[tuple[int, int, int, int]] = []
+    min_h = max(8, int(height * 0.003))
+    max_h = max(200, int(height * 0.1))
+    for contour in contours:
+        x, y, bw, bh = cv2.boundingRect(contour)
+        if bw > 12 and min_h <= bh <= max_h:
+            boxes.append((int(x), int(y), int(bw), int(bh)))
+
+    y_band = max(15, int(height * 0.006))
+    boxes.sort(key=lambda box: (round(box[1] / y_band) * y_band, box[0]))
+    return boxes
 
 
 def build_page(

@@ -33,13 +33,58 @@ LoaderFactory = Callable[[str | Path], DocumentLoader]
 ImagePreprocessor = Callable[[np.ndarray], np.ndarray]
 
 
-def preprocess_for_ocr(image: np.ndarray) -> np.ndarray:
-    """Run the Phase 2 image cleanup stages in their safe order."""
-    orientation = detect_orientation(image)
-    oriented = rotate_orientation(image, orientation)
-    deskewed, _ = deskew_image(oriented)
-    cropped = remove_borders(deskewed)
-    return enhance_document_image(cropped)
+def preprocess_for_ocr(
+    image: np.ndarray, stages: Mapping[str, bool] | None = None
+) -> np.ndarray:
+    """Run the Phase 2 image cleanup stages in their safe order.
+
+    `stages` maps orientation/deskew/borders/enhance to on or off; a stage
+    that is not mentioned stays on.
+    """
+
+    def enabled(name: str) -> bool:
+        return True if stages is None else bool(stages.get(name, True))
+
+    if enabled("orientation"):
+        image = rotate_orientation(image, detect_orientation(image))
+    if enabled("deskew"):
+        image, _ = deskew_image(image)
+    if enabled("borders"):
+        image = remove_borders(image)
+    if enabled("enhance"):
+        image = enhance_document_image(image)
+    return image
+
+
+@dataclass(frozen=True)
+class PageOptions:
+    """Per-run choices for cleanup, layout and table recognition."""
+
+    preprocessing: Mapping[str, bool] | None = None
+    detect_tables: bool = True
+    reading_order: bool = True
+    merge_paragraphs: bool = True
+
+    @classmethod
+    def from_mapping(cls, options: Mapping[str, object]) -> PageOptions:
+        """Read the GUI option mapping defensively; bad shapes fall back to defaults."""
+        raw = options.get("preprocessing")
+        stages = (
+            {str(key): bool(value) for key, value in raw.items()}
+            if isinstance(raw, Mapping)
+            else None
+        )
+
+        def flag(key: str) -> bool:
+            value = options.get(key, True)
+            return value if isinstance(value, bool) else True
+
+        return cls(
+            preprocessing=stages,
+            detect_tables=flag("detect_tables"),
+            reading_order=flag("reading_order"),
+            merge_paragraphs=flag("merge_paragraphs"),
+        )
 
 
 @dataclass
@@ -68,8 +113,10 @@ class PageSession:
         device: str,
         dpi: int,
         engine_config: Mapping[str, object] | None,
+        page_options: PageOptions | None = None,
     ) -> None:
         self._service = service
+        self._page_options = page_options or PageOptions()
         self._engine_ids = engine_ids
         self._device = device
         self._dpi = dpi
@@ -112,6 +159,7 @@ class PageSession:
                 self._config,
                 self._stack,
                 self._engines,
+                self._page_options,
             )
             return self._service.postprocessor.process_page(page)
         except PDFOCRError:
@@ -162,6 +210,7 @@ class PipelineService:
         device: str = "cpu",
         dpi: int = 300,
         engine_config: Mapping[str, object] | None = None,
+        page_options: PageOptions | None = None,
     ) -> PageSession:
         """Open a session that recognises pages individually for batch work."""
         self._validate_options(engine_id, fallback_engine_ids, dpi)
@@ -171,6 +220,7 @@ class PipelineService:
             device=device,
             dpi=dpi,
             engine_config=engine_config,
+            page_options=page_options,
         )
 
     def open_document(self, file_path: str | Path, stack: ExitStack) -> _OpenDocument:
@@ -193,22 +243,27 @@ class PipelineService:
         config: Mapping[str, object] | None,
         stack: ExitStack,
         engines: dict[str, BaseOCREngine],
+        options: PageOptions | None = None,
     ) -> OCRPage:
         """Recognise one page, taking the text layer when the page already has one."""
         if document.pdf is None:
             loaded = document.loader.load_page(page_number, dpi)
-            return self._ocr_page(loaded, engine_ids, device, config, stack, engines)
+            return self._ocr_page(
+                loaded, engine_ids, device, config, stack, engines, options
+            )
         page_type = document.page_types[page_number - 1]
         index = page_number - 1
         if page_type == PageType.TEXT_BASED:
             return self._classifier.extract_page(document.pdf[index], page_number, dpi)
         loaded = document.loader.load_page(page_number, dpi)
-        recognized = self._ocr_page(loaded, engine_ids, device, config, stack, engines)
+        recognized = self._ocr_page(
+            loaded, engine_ids, device, config, stack, engines, options
+        )
         if page_type == PageType.HYBRID:
             direct = self._classifier.extract_page(
                 document.pdf[index], page_number, dpi
             )
-            return self._merge_hybrid(direct, recognized)
+            return self._merge_hybrid(direct, recognized, options)
         return recognized.with_updates(page_type=PageType.SCANNED)
 
     def process(
@@ -322,8 +377,10 @@ class PipelineService:
         config: Mapping[str, object] | None,
         stack: ExitStack,
         engines: dict[str, BaseOCREngine],
+        options: PageOptions | None = None,
     ) -> OCRPage:
-        image = self._preprocessor(loaded.image)
+        options = options or PageOptions()
+        image = self._preprocess(loaded.image, options.preprocessing)
         last_error: PDFOCRError | None = None
         for engine_id in engine_ids:
             try:
@@ -339,14 +396,36 @@ class PipelineService:
                     )
                     engines[engine_id] = engine
                 page = engine.recognize(image, page_number=loaded.page_number)
-                return self._layout_analyzer.analyze(page)
+                if not options.detect_tables:
+                    page = page.with_updates(tables=())
+                return self._analyze_layout(page, options)
             except OCREngineError as error:
                 last_error = error
         raise OCREngineError(
             "Không OCR engine nào xử lý được trang này."
         ) from last_error
 
-    def _merge_hybrid(self, direct: OCRPage, recognized: OCRPage) -> OCRPage:
+    def _preprocess(
+        self, image: np.ndarray, stages: Mapping[str, bool] | None
+    ) -> np.ndarray:
+        # A custom preprocessor knows nothing about stages; only the built-in does.
+        if stages is not None and self._preprocessor is preprocess_for_ocr:
+            return preprocess_for_ocr(image, stages)
+        return self._preprocessor(image)
+
+    def _analyze_layout(self, page: OCRPage, options: PageOptions) -> OCRPage:
+        return self._layout_analyzer.analyze(
+            page,
+            options.merge_paragraphs,
+            reading_order=options.reading_order,
+        )
+
+    def _merge_hybrid(
+        self,
+        direct: OCRPage,
+        recognized: OCRPage,
+        options: PageOptions | None = None,
+    ) -> OCRPage:
         unique_ocr = tuple(
             block
             for block in recognized.blocks
@@ -357,7 +436,7 @@ class PipelineService:
             tables=direct.tables + recognized.tables,
             page_type=PageType.HYBRID,
         )
-        return self._layout_analyzer.analyze(merged)
+        return self._analyze_layout(merged, options or PageOptions())
 
     @staticmethod
     def _center_inside(candidate: OCRBlock, existing: OCRBlock) -> bool:

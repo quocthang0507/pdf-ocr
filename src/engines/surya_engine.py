@@ -55,9 +55,21 @@ class SuryaOCREngine(BaseOCREngine):
         self._uses_current_api = False
         super().__init__(weights_manager, config)
 
+    @staticmethod
+    def _apply_transformers_compatibility() -> None:
+        try:
+            config_module = import_module("surya.recognition.model.config")
+            config_cls = getattr(config_module, "SuryaOCRConfig", None)
+            if config_cls is not None:
+                config_cls.has_no_defaults_at_init = True
+                config_cls.get_text_config = lambda self, *args, **kwargs: self.decoder
+        except Exception:
+            pass
+
     def _load_model(self) -> None:
         os.environ["MODEL_CACHE_DIR"] = str(self.weights_dir)
         os.environ["TORCH_DEVICE"] = self._resolved_device()
+        self._apply_transformers_compatibility()
         recognition = import_module("surya.recognition")
         parameters = inspect.signature(recognition.RecognitionPredictor).parameters
         self._uses_current_api = "manager" in parameters

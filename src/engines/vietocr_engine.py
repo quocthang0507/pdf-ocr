@@ -8,12 +8,16 @@ from src.core.models import OCRPage
 from src.engines.base_engine import BaseOCREngine, ConfigField
 from src.engines.engine_registry import register_engine
 from src.engines.result_builder import (
+    LineResult,
     as_pil_image,
     build_page,
     image_size,
     rectangle_polygon,
+    segment_lines,
 )
 from src.services.weights_manager import ModelWeightsManager
+
+_segment_lines = segment_lines
 
 
 def _device(value: object) -> bool:
@@ -62,15 +66,66 @@ class VietOCREngine(BaseOCREngine):
             return "cpu"
         return "cuda:0" if device == "cuda" else device
 
+    def _predict_crops(self, crops: list[Any]) -> tuple[list[str], list[float]]:
+        if self._predictor is None:
+            return [], []
+        if hasattr(self._predictor, "predict_batch"):
+            try:
+                sents, probs = self._predictor.predict_batch(crops, return_prob=True)
+                return [str(s) for s in sents], [float(p) for p in probs]
+            except Exception:
+                pass
+        fallback_sents: list[str] = []
+        fallback_probs: list[float] = []
+        for crop in crops:
+            output = self._predictor.predict(crop, return_prob=True)
+            text, prob = output if isinstance(output, tuple) else (output, 1.0)
+            fallback_sents.append(str(text))
+            fallback_probs.append(float(prob))
+        return fallback_sents, fallback_probs
+
+    def _recognize_multi_line(
+        self, image: object, width: int, height: int
+    ) -> list[LineResult]:
+        boxes = _segment_lines(image)
+        if not boxes:
+            return []
+        crops: list[Any] = []
+        pad = 2
+        pil_image = as_pil_image(image)
+        for x, y, w, h in boxes:
+            crop_box = (
+                max(0, x - pad),
+                max(0, y - pad),
+                min(width, x + w + pad),
+                min(height, y + h + pad),
+            )
+            crops.append(pil_image.crop(crop_box))
+
+        sents, probs = self._predict_crops(crops)
+        lines: list[LineResult] = []
+        for (x, y, w, h), text, prob in zip(boxes, sents, probs, strict=False):
+            stripped = text.strip()
+            if stripped:
+                poly = (
+                    (float(x), float(y)),
+                    (float(x + w), float(y)),
+                    (float(x + w), float(y + h)),
+                    (float(x), float(y + h)),
+                )
+                lines.append((poly, stripped, float(prob)))
+        return lines
+
     def _recognize(self, image: object, page_number: int) -> OCRPage:
         if self._predictor is None:
             raise RuntimeError("VietOCR predictor is unavailable.")
-        output = self._predictor.predict(as_pil_image(image), return_prob=True)
-        if isinstance(output, tuple):
-            text, confidence = output
-        else:
-            text, confidence = output, 1.0
         width, height = image_size(image)
+        if height > 80:
+            lines = self._recognize_multi_line(image, width, height)
+            if lines:
+                return build_page(image, page_number, lines)
+        output = self._predictor.predict(as_pil_image(image), return_prob=True)
+        text, confidence = output if isinstance(output, tuple) else (output, 1.0)
         line = (rectangle_polygon(width, height), str(text), float(confidence))
         return build_page(image, page_number, (line,))
 

@@ -32,6 +32,28 @@ PREPROCESSING_STAGES: tuple[tuple[str, str], ...] = (
 )
 
 
+#: Layout choices: key, label, tooltip. All are on by default.
+STRUCTURE_OPTIONS: tuple[tuple[str, str, str], ...] = (
+    (
+        "detect_tables",
+        "Nhận diện bảng biểu",
+        "Tách bảng thành lưới hàng/cột để chỉnh sửa và xuất Excel/Word. "
+        "Chỉ các mô hình hỗ trợ bảng (như PaddleOCR) mới dùng được.",
+    ),
+    (
+        "reading_order",
+        "Sắp xếp thứ tự đọc nhiều cột",
+        "Đọc hết cột này rồi mới sang cột khác, không đọc xuyên cột.",
+    ),
+    (
+        "merge_paragraphs",
+        "Gộp các dòng thành đoạn văn",
+        "Nối các dòng liên tiếp thuộc cùng một đoạn thành một khối.",
+    ),
+)
+TABLE_UNSUPPORTED_TIP = "Mô hình đang chọn không hỗ trợ nhận diện bảng biểu."
+
+
 def populate_device_combo(combo: QComboBox) -> None:
     """Offer every execution target, greying out the ones this machine lacks."""
     model = combo.model()
@@ -60,6 +82,12 @@ class SettingsDock(QWidget):
         self.dpi_spin.setValue(DEFAULT_DPI)
         self.dpi_spin.setSuffix(" DPI")
         self.preprocessing_boxes: dict[str, QCheckBox] = {}
+        self.structure_boxes: dict[str, QCheckBox] = {}
+        self._table_engines = {
+            metadata.engine_id
+            for metadata in EngineRegistry.available()
+            if metadata.supports_tables
+        }
         self._populate()
         self._build_layout()
         self._connect_changes()
@@ -92,12 +120,35 @@ class SettingsDock(QWidget):
             self.preprocessing_boxes[key] = box
             filter_layout.addWidget(box)
 
+        structure_group = QGroupBox("Bố cục & cấu trúc", self)
+        structure_layout = QVBoxLayout(structure_group)
+        for key, label, tip in STRUCTURE_OPTIONS:
+            box = QCheckBox(label, structure_group)
+            box.setObjectName(f"structure_{key}")
+            box.setToolTip(tip)
+            box.setChecked(True)
+            self.structure_boxes[key] = box
+            structure_layout.addWidget(box)
+        self._sync_table_support()
+
         layout = QVBoxLayout(self)
         layout.addWidget(engine_group)
+        layout.addWidget(structure_group)
         layout.addWidget(filter_group)
         layout.addStretch(1)
 
+    def _sync_table_support(self) -> None:
+        """Grey out table recognition when the chosen model cannot do it."""
+        box = self.structure_boxes["detect_tables"]
+        supported = self.engine_combo.currentData() in self._table_engines
+        box.setEnabled(supported)
+        tip = next(tip for key, _l, tip in STRUCTURE_OPTIONS if key == "detect_tables")
+        box.setToolTip(tip if supported else TABLE_UNSUPPORTED_TIP)
+
     def _connect_changes(self) -> None:
+        self.engine_combo.currentIndexChanged.connect(self._sync_table_support)
+        for box in self.structure_boxes.values():
+            box.toggled.connect(self._publish)
         self.engine_combo.currentIndexChanged.connect(self._publish)
         self.device_combo.currentIndexChanged.connect(self._publish)
         self.dpi_spin.valueChanged.connect(self._publish)
@@ -113,6 +164,11 @@ class SettingsDock(QWidget):
             "preprocessing": {
                 key: box.isChecked() for key, box in self.preprocessing_boxes.items()
             },
+            # Table recognition only counts when the model can actually do it.
+            "detect_tables": self.structure_boxes["detect_tables"].isEnabled()
+            and self.structure_boxes["detect_tables"].isChecked(),
+            "reading_order": self.structure_boxes["reading_order"].isChecked(),
+            "merge_paragraphs": self.structure_boxes["merge_paragraphs"].isChecked(),
         }
 
     def _publish(self) -> None:

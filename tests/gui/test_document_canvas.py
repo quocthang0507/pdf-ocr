@@ -54,7 +54,11 @@ def _page() -> OCRPage:
     )
 
 
-def _wheel(canvas: DocumentCanvas, steps: int) -> QWheelEvent:
+def _wheel(
+    canvas: DocumentCanvas,
+    steps: int,
+    modifiers: Qt.KeyboardModifier = Qt.KeyboardModifier.NoModifier,
+) -> QWheelEvent:
     position = QPointF(canvas.viewport().rect().center())
     return QWheelEvent(
         position,
@@ -62,7 +66,7 @@ def _wheel(canvas: DocumentCanvas, steps: int) -> QWheelEvent:
         QPoint(0, 0),
         QPoint(0, 120 * steps),
         Qt.MouseButton.NoButton,
-        Qt.KeyboardModifier.NoModifier,
+        modifiers,
         Qt.ScrollPhase.NoScrollPhase,
         False,
     )
@@ -101,17 +105,54 @@ def test_block_rectangles_match_the_recognised_geometry(
     assert (first.width(), first.height()) == (540, 70)
 
 
-def test_wheel_zooms_in_and_out_around_the_cursor(canvas: DocumentCanvas) -> None:
+def test_ctrl_wheel_zooms_in_and_out_around_the_cursor(
+    canvas: DocumentCanvas,
+) -> None:
     canvas.set_image(_image())
     canvas.reset_zoom()
     start = canvas.zoom_factor()
 
-    canvas.wheelEvent(_wheel(canvas, 1))
+    canvas.wheelEvent(_wheel(canvas, 1, Qt.KeyboardModifier.ControlModifier))
     zoomed_in = canvas.zoom_factor()
-    canvas.wheelEvent(_wheel(canvas, -1))
+    canvas.wheelEvent(_wheel(canvas, -1, Qt.KeyboardModifier.ControlModifier))
 
     assert zoomed_in > start
     assert canvas.zoom_factor() == pytest.approx(start, rel=1e-6)
+
+
+def test_wheel_without_ctrl_requests_page_step_at_boundary(
+    canvas: DocumentCanvas, qtbot
+) -> None:
+    canvas.set_image(_image())
+    canvas.reset_zoom()
+    canvas.verticalScrollBar().setValue(canvas.verticalScrollBar().maximum())
+
+    with qtbot.waitSignal(canvas.page_step_requested) as blocker:
+        canvas.wheelEvent(_wheel(canvas, -1))
+    assert blocker.args == [1]
+
+    canvas.verticalScrollBar().setValue(canvas.verticalScrollBar().minimum())
+    canvas._last_page_step_time = 0.0
+    with qtbot.waitSignal(canvas.page_step_requested) as blocker:
+        canvas.wheelEvent(_wheel(canvas, 1))
+    assert blocker.args == [-1]
+
+
+def test_escape_cancels_region_mode(canvas: DocumentCanvas, qtbot) -> None:
+    canvas.set_region_mode(True)
+    assert canvas.region_mode() is True
+
+    from PySide6.QtGui import QKeyEvent
+
+    escape_event = QKeyEvent(
+        QKeyEvent.Type.KeyPress,
+        Qt.Key.Key_Escape,
+        Qt.KeyboardModifier.NoModifier,
+    )
+    with qtbot.waitSignal(canvas.region_mode_cancelled):
+        canvas.keyPressEvent(escape_event)
+
+    assert canvas.region_mode() is False
 
 
 def test_zoom_is_clamped_to_a_usable_range(canvas: DocumentCanvas) -> None:

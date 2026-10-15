@@ -191,10 +191,13 @@ def test_the_window_command_toggles_region_drawing(qtbot, tmp_path) -> None:
 
     action.trigger()
     enabled = window.comparison.region_mode()
+    checked = action.isChecked()
     action.trigger()
 
     assert action.isCheckable() is True
     assert enabled is True
+    assert checked is True
+    assert action.isChecked() is False
     assert window.comparison.region_mode() is False
 
 

@@ -59,6 +59,19 @@ ACTION_SPECS: tuple[ActionSpec, ...] = (
         checkable=True,
     ),
     ActionSpec(
+        "edit_table",
+        "Chỉnh sửa &bảng biểu…",
+        "Ctrl+T",
+        "Sửa các ô của bảng đã nhận diện trên trang hiện tại.",
+    ),
+    ActionSpec(
+        "toggle_layout",
+        "Hiện khung &bố cục",
+        "Ctrl+L",
+        "Bật/tắt khung màu của đoạn, tiêu đề, bảng và hình trên trang.",
+        checkable=True,
+    ),
+    ActionSpec(
         "settings", "&Cài đặt…", "Ctrl+,", "Cấu hình thư mục weights và thiết bị chạy."
     ),
     ActionSpec(
@@ -89,7 +102,7 @@ MENU_LAYOUT: tuple[tuple[str, tuple[str, ...]], ...] = (
         "&Xem",
         ("zoom_in", "zoom_out", "zoom_reset", SEPARATOR, "previous_page", "next_page"),
     ),
-    ("&OCR", ("run_ocr", "select_region")),
+    ("&OCR", ("run_ocr", "select_region", SEPARATOR, "edit_table", "toggle_layout")),
     ("Công &cụ", ("settings",)),
     ("Trợ &giúp", ("about",)),
 )

@@ -91,6 +91,28 @@ QMenu::item:selected {
     color: #1d4ed8;
 }
 
+QMenu::item:checked {
+    background-color: #eef1f6;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+
+QMenu::item:checked:selected {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+
+QMenu::indicator {
+    height: 14px;
+    margin-left: 6px;
+    width: 14px;
+}
+
+QMenu::indicator:checked {
+    image: url("@ICONS@/check.svg");
+}
+
 QMenu::item:disabled {
     color: #98a2b3;
 }
@@ -128,6 +150,19 @@ QToolButton:hover {
 
 QToolButton:pressed {
     background-color: #dbe3ef;
+}
+
+QToolButton:checked {
+    background-color: #dbeafe;
+    border: 1px solid #1d4ed8;
+    color: #1d4ed8;
+    font-weight: 600;
+}
+
+QToolButton:checked:hover {
+    background-color: #bfdbfe;
+    border: 1px solid #1d4ed8;
+    color: #1d4ed8;
 }
 
 QToolButton:disabled {
@@ -513,6 +548,24 @@ QPushButton#next_page_button:disabled {
     border-color: #e4e9f0;
     color: #98a2b3;
     opacity: 0.6;
+}
+
+QScrollBar#page_slider {
+    background: #eef1f6;
+    border-radius: 4px;
+    height: 10px;
+    max-width: 220px;
+    min-width: 60px;
+}
+
+QScrollBar#page_slider::handle {
+    background-color: #1d4ed8;
+    border-radius: 4px;
+    min-width: 20px;
+}
+
+QScrollBar#page_slider::handle:hover {
+    background-color: #1a45c0;
 }
 
 QSpinBox::up-arrow {

@@ -31,8 +31,9 @@ from PySide6.QtWidgets import (
 from src.constants import ICON_COLORS
 from src.core.document_loader import SUPPORTED_EXTENSIONS
 from src.core.exceptions import DocumentLoadError, PDFOCRError
-from src.core.models import BoundingBox, OCRPage
+from src.core.models import BoundingBox, OCRPage, OCRTable
 from src.core.transcript import apply_transcript
+from src.engines.engine_registry import EngineRegistry
 from src.exporters.exporter_registry import ExporterRegistry
 from src.gui.components.comparison_dock import ComparisonDock
 from src.gui.components.menu_bar import (
@@ -52,7 +53,7 @@ from src.gui.dialogs.settings_dialog import SettingsDialog
 from src.gui.document_session import DocumentSession
 from src.gui.i18n import translate_menu
 from src.gui.styles.style_manager import StyleManager
-from src.services.pipeline_service import PipelineService
+from src.services.pipeline_service import PageOptions, PipelineService
 from src.utils.logger import logger
 from src.workers.batch_manager import BatchManager
 from src.workers.export_worker import (
@@ -174,6 +175,7 @@ class MainWindow(QMainWindow):
         # before the document already on screen is replaced.
         if session.page_count < 1:
             raise DocumentLoadError("Tài liệu không có trang nào.")
+        self.set_region_mode(False)
         self._activate(session)
         self.set_current_path(resolved)
         self._remember(resolved)
@@ -232,6 +234,7 @@ class MainWindow(QMainWindow):
         self.comparison.set_page_info(current, total)
         self.command_actions["previous_page"].setEnabled(current > 1)
         self.command_actions["next_page"].setEnabled(0 < current < total)
+        self.command_actions["edit_table"].setEnabled(self.comparison.table_count() > 0)
 
     def open_folder(self, path: str | Path) -> None:
         """Announce a folder of documents for batch processing."""
@@ -388,6 +391,7 @@ class MainWindow(QMainWindow):
             "previous_page": lambda: self.show_page_step(-1),
             "next_page": lambda: self.show_page_step(1),
             "run_ocr": self.request_ocr,
+            "edit_table": self.request_edit_table,
             "find_replace": self.open_find_replace,
             "settings": self.request_settings,
             "about": self.show_about,
@@ -397,6 +401,10 @@ class MainWindow(QMainWindow):
                 self.command_actions[key].triggered.connect(handler)
         # A checkable command reports its new state, so it binds to toggled.
         self.command_actions["select_region"].toggled.connect(self.set_region_mode)
+        layout_action = self.command_actions["toggle_layout"]
+        layout_action.setChecked(True)
+        layout_action.toggled.connect(self.comparison.set_layout_visible)
+        self.comparison.table_edited.connect(self._on_table_edited)
         self.recent_files_menu.file_selected.connect(self.open_path)
 
     def prompt_open_file(self) -> None:
@@ -440,6 +448,11 @@ class MainWindow(QMainWindow):
 
     def set_region_mode(self, enabled: bool) -> None:
         """Turn region drawing on the page on or off."""
+        action = self.command_actions.get("select_region")
+        if action is not None and action.isChecked() != enabled:
+            action.blockSignals(True)
+            action.setChecked(enabled)
+            action.blockSignals(False)
         self.comparison.set_region_mode(enabled)
 
     def recognise_region(self, region: BoundingBox) -> None:
@@ -504,11 +517,38 @@ class MainWindow(QMainWindow):
             return
         self.guarded(lambda: self._run_batch(documents), title="Quét hàng loạt")
 
+    def request_edit_table(self) -> None:
+        """Open the grid editor for a table of the page on screen."""
+        if self.comparison.table_count() == 0:
+            self.notifications.notify(
+                "Trang này chưa có bảng biểu. Hãy bật 'Nhận diện bảng biểu' "
+                "(mô hình PaddleOCR) rồi chạy OCR.",
+                Severity.INFO,
+            )
+            return
+        self.comparison.edit_selected_table()
+
+    def _on_table_edited(self, index: int, table: OCRTable) -> None:
+        """Fold a grid edit into the page model so Excel/Word exports include it."""
+        session = self._session
+        if session is None:
+            return
+        result = session.result(session.current_page)
+        if result is None or not 0 <= index < len(result.tables):
+            return
+        tables = list(result.tables)
+        tables[index] = table
+        session.store(result.with_updates(tables=tuple(tables)))
+        self.notifications.notify("Đã cập nhật bảng biểu.", Severity.SUCCESS)
+
     def _run_batch(self, documents: Sequence[str]) -> None:
+        engine_id = self._option_text("engine_id", DEFAULT_ENGINE_ID)
         session = self._pipeline.open_page_session(
-            engine_id=self._option_text("engine_id", DEFAULT_ENGINE_ID),
+            engine_id=engine_id,
             device=self._option_text("device", "cpu"),
             dpi=self._option_number("dpi", DEFAULT_DPI),
+            engine_config=self._engine_config(engine_id),
+            page_options=PageOptions.from_mapping(self._options),
         )
         manager = BatchManager(
             lambda task: session.recognise(task.document_path, task.page_number),
@@ -523,6 +563,16 @@ class MainWindow(QMainWindow):
         self._batch = dialog
         dialog.start()
         self.batch_status.set_running(True)
+
+    def _engine_config(self, engine_id: str) -> dict[str, object] | None:
+        """Switch the table model off for engines that have one and it is unwanted."""
+        supports_tables = any(
+            metadata.engine_id == engine_id and metadata.supports_tables
+            for metadata in EngineRegistry.available()
+        )
+        if not supports_tables:
+            return None
+        return {"use_tables": self._options.get("detect_tables") is not False}
 
     def _option_text(self, key: str, default: str) -> str:
         """Read a dock option defensively; it may be missing or the wrong shape."""
@@ -670,6 +720,9 @@ class MainWindow(QMainWindow):
         self.zoom_requested.connect(self.comparison.apply_zoom)
         self.comparison.region_ocr_requested.connect(self.region_ocr_requested)
         self.comparison.page_change_requested.connect(self.go_to_page)
+        self.comparison.region_mode_cancelled.connect(
+            lambda: self.set_region_mode(False)
+        )
         self.comparison.transcript_edited.connect(self._on_transcript_edited)
         self.region_ocr_requested.connect(self.recognise_region)
         return self.comparison
