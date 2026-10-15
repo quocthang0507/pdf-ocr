@@ -309,6 +309,40 @@ def test_dock_publishes_the_current_processing_options(
     assert options["engine_id"] == dock.engine_combo.currentData()
 
 
+def test_dock_exposes_the_tunable_parameters_of_the_chosen_model(
+    dock: SettingsDock, qtbot
+) -> None:
+    dock.engine_combo.setCurrentIndex(dock.engine_combo.findData("paddle"))
+    threshold = dock.param_widgets["paddle"]["det_db_thresh"]
+
+    with qtbot.waitSignal(dock.options_changed) as blocker:
+        threshold.setValue(0.5)
+
+    assert blocker.args[0]["engine_params"] == {"lang": "vi", "det_db_thresh": 0.5}
+    assert threshold.isVisibleTo(dock) is True
+    assert dock.param_widgets["surya"]["langs"].isVisibleTo(dock) is False
+
+
+def test_dock_resets_model_parameters_to_their_defaults(dock: SettingsDock) -> None:
+    dock.engine_combo.setCurrentIndex(dock.engine_combo.findData("paddle"))
+    dock.param_widgets["paddle"]["det_db_thresh"].setValue(0.7)
+
+    dock.param_reset_button.click()
+
+    assert dock.engine_params()["det_db_thresh"] == pytest.approx(0.3)
+
+
+def test_every_exposed_parameter_is_accepted_by_its_engine() -> None:
+    from src.engines.engine_registry import EngineRegistry
+    from src.gui.components.settings_dock import ENGINE_PARAMETERS
+
+    for engine_id, parameters in ENGINE_PARAMETERS.items():
+        engine = EngineRegistry.get(
+            engine_id, config={p.key: p.default for p in parameters}
+        )
+        assert engine is not None
+
+
 def test_dock_toggles_each_preprocessing_stage(dock: SettingsDock, qtbot) -> None:
     with qtbot.waitSignal(dock.options_changed) as blocker:
         dock.preprocessing_boxes["deskew"].setChecked(False)

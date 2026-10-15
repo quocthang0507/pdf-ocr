@@ -63,9 +63,13 @@ class BatchStatusBar(QStatusBar):
         self.progress_bar.setVisible(running)
         self.pause_button.setEnabled(running)
         self.cancel_button.setEnabled(running)
-        if not running:
-            self._paused = False
-            self.pause_button.setText(PAUSE_LABEL)
+        if running:
+            # A fresh run must not inherit the previous run's figures.
+            self.progress_bar.setValue(0)
+            self.count_label.setText("")
+            self.eta_label.setText("")
+        self._paused = False
+        self.pause_button.setText(PAUSE_LABEL)
 
     def show_progress(self, progress: BatchProgress) -> None:
         self.progress_bar.setValue(progress.percent)

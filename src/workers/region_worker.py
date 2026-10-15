@@ -11,6 +11,7 @@ import pymupdf
 from PySide6.QtCore import QObject, QRunnable, Signal
 
 from src.core.exceptions import OCREngineError, PDFOCRError
+from src.core.layout_analyzer import LayoutAnalyzer
 from src.core.models import BoundingBox, OCRPage
 from src.core.transcript import render_transcript
 from src.engines.engine_registry import engine_session
@@ -77,6 +78,8 @@ class RegionWorker(QRunnable):
         page_number: int = 1,
         preferred_text: str = "",
         emit_text: bool = True,
+        merge_paragraphs: bool = True,
+        reading_order: bool = True,
     ) -> None:
         super().__init__()
         self.signals = RegionSignals()
@@ -94,6 +97,8 @@ class RegionWorker(QRunnable):
         self._page_number = page_number
         self._preferred_text = preferred_text
         self._emit_text = emit_text
+        self._merge_paragraphs = merge_paragraphs
+        self._reading_order = reading_order
 
     def run(self) -> None:
         try:
@@ -112,7 +117,13 @@ class RegionWorker(QRunnable):
             self.signals.failed.emit(OCREngineError.default_message)
             return
         if self._emit_text:
-            text = self._preferred_text or render_transcript(page).strip()
+            # Engines report one block per line; rebuild paragraphs and column order.
+            tidy = LayoutAnalyzer().analyze(
+                page,
+                merge_paragraphs=self._merge_paragraphs,
+                reading_order=self._reading_order,
+            )
+            text = self._preferred_text or render_transcript(tidy).strip()
             self.signals.finished.emit(text)
         if page.tables:
             tables = tuple(

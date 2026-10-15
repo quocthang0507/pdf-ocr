@@ -140,6 +140,19 @@ def _render_block_lines(
     return cursor
 
 
+def _group_label(text: str, parent: QWidget) -> QLabel:
+    label = QLabel(text, parent)
+    label.setObjectName("nav_group_label")
+    return label
+
+
+def _separator(parent: QWidget) -> QFrame:
+    line = QFrame(parent)
+    line.setObjectName("nav_separator")
+    line.setFrameShape(QFrame.Shape.VLine)
+    return line
+
+
 class ComparisonDock(QWidget):
     """Stateful two-pane editor; the page model itself is never mutated here.
 
@@ -152,6 +165,7 @@ class ComparisonDock(QWidget):
     table_edited = Signal(int, OCRTable)
     region_ocr_requested = Signal(BoundingBox)
     region_mode_cancelled = Signal()
+    region_rerun_requested = Signal()
 
     def __init__(self, parent: QWidget | None = None) -> None:
         super().__init__(parent)
@@ -169,6 +183,19 @@ class ComparisonDock(QWidget):
         self.region_title.setObjectName("region_title")
         self.region_copy_button = QPushButton("Sao chép", self.region_panel)
         self.region_copy_button.setObjectName("region_copy")
+        self.region_insert_button = QPushButton("Chèn vào bản chép", self.region_panel)
+        self.region_insert_button.setObjectName("region_insert")
+        self.region_insert_button.setToolTip(
+            "Chèn kết quả vùng chọn vào vị trí con trỏ trong bản chép"
+        )
+        self.region_rerun_button = QPushButton("OCR bằng mô hình", self.region_panel)
+        self.region_rerun_button.setObjectName("region_rerun")
+        self.region_rerun_button.setToolTip(
+            "Nhận diện lại vùng này bằng mô hình đang chọn ở bảng tùy chọn"
+        )
+        self.region_source_label = QLabel("", self.region_panel)
+        self.region_source_label.setObjectName("region_source")
+        self.region_source_label.setWordWrap(True)
         self.region_label = QPlainTextEdit(self.region_panel)
         self.region_label.setObjectName("region_result")
         self.region_label.setReadOnly(True)
@@ -208,6 +235,9 @@ class ComparisonDock(QWidget):
         self.page_spin.setToolTip("Đi tới trang")
         self.page_spin.setRange(0, 0)
         self.page_spin.setEnabled(False)
+        self.page_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
+        self.page_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        self.page_spin.setFixedWidth(64)
         self.page_slider = QScrollBar(Qt.Orientation.Horizontal, self)
         self.page_slider.setObjectName("page_slider")
         self.page_slider.setToolTip("Cuộn để chuyển trang")
@@ -235,6 +265,8 @@ class ComparisonDock(QWidget):
         self.zoom_in_btn = QPushButton("+", self)
         self.zoom_in_btn.setObjectName("zoom_in_button")
         self.zoom_in_btn.setToolTip("Phóng to")
+        for button in (self.zoom_out_btn, self.zoom_in_btn):
+            button.setFixedSize(30, 30)
         self.zoom_reset_btn = QPushButton("Vừa khung", self)
         self.zoom_reset_btn.setObjectName("zoom_reset_button")
         self.zoom_reset_btn.setToolTip("Vừa khung cửa sổ")
@@ -267,21 +299,25 @@ class ComparisonDock(QWidget):
         canvas_layout.setSpacing(4)
         canvas_layout.addWidget(self.canvas, 1)
 
-        nav_bar = QWidget(canvas_pane)
+        nav_bar = QFrame(canvas_pane)
+        nav_bar.setObjectName("nav_bar")
         nav_layout = QHBoxLayout(nav_bar)
-        nav_layout.setContentsMargins(4, 2, 4, 4)
-        nav_layout.setSpacing(8)
+        nav_layout.setContentsMargins(8, 6, 8, 6)
+        nav_layout.setSpacing(6)
+        nav_layout.addWidget(_group_label("Thu phóng", nav_bar))
         nav_layout.addWidget(self.zoom_out_btn)
         nav_layout.addWidget(self.zoom_label)
         nav_layout.addWidget(self.zoom_in_btn)
         nav_layout.addWidget(self.zoom_reset_btn)
-        nav_layout.addStretch(1)
+        nav_layout.addSpacing(12)
+        nav_layout.addWidget(_separator(nav_bar))
+        nav_layout.addSpacing(12)
+        nav_layout.addWidget(_group_label("Trang", nav_bar))
         nav_layout.addWidget(self.prev_page_btn)
         nav_layout.addWidget(self.page_spin)
-        nav_layout.addWidget(self.page_slider)
-        nav_layout.addWidget(self.page_label)
         nav_layout.addWidget(self.next_page_btn)
-        nav_layout.addStretch(1)
+        nav_layout.addWidget(self.page_slider, 1)
+        nav_layout.addWidget(self.page_label)
         canvas_layout.addWidget(nav_bar)
 
         text_pane = QWidget(self)
@@ -300,12 +336,17 @@ class ComparisonDock(QWidget):
         header = QHBoxLayout()
         header.addWidget(self.region_title)
         header.addStretch(1)
+        header.addWidget(self.region_rerun_button)
+        header.addWidget(self.region_insert_button)
         header.addWidget(self.region_copy_button)
         panel_layout = QVBoxLayout(self.region_panel)
         panel_layout.setContentsMargins(12, 10, 12, 12)
         panel_layout.addLayout(header)
+        panel_layout.addWidget(self.region_source_label)
         panel_layout.addWidget(self.region_label)
         self.region_copy_button.clicked.connect(self.copy_region_result)
+        self.region_insert_button.clicked.connect(self.insert_region_result)
+        self.region_rerun_button.clicked.connect(self.region_rerun_requested)
         splitter = QSplitter(Qt.Orientation.Horizontal, self)
         splitter.setObjectName("comparison_splitter")
         splitter.addWidget(canvas_pane)
@@ -561,13 +602,29 @@ class ComparisonDock(QWidget):
     def region_mode(self) -> bool:
         return self.canvas.region_mode()
 
-    def show_region_result(self, text: str) -> None:
-        """Display text recognised from a selected region beside the transcript."""
+    def show_region_result(self, text: str, source: str = "") -> None:
+        """Display text recognised from a selected region beside the transcript.
+
+        `source` tells the user where the text came from, so a changed model
+        is never silently ignored when the PDF already carried a text layer.
+        """
         self.region_label.setPlainText(text)
+        self.set_region_source(source)
         self.region_panel.setVisible(bool(text))
+
+    def set_region_source(self, source: str) -> None:
+        self.region_source_label.setText(source)
+        self.region_source_label.setVisible(bool(source))
 
     def region_result(self) -> str:
         return self.region_label.toPlainText()
+
+    def insert_region_result(self) -> None:
+        """Put the region text into the transcript at the cursor."""
+        text = self.region_result().strip()
+        if text:
+            self.editor.textCursor().insertText(text)
+            self.editor.setFocus()
 
     def copy_region_result(self) -> None:
         QApplication.clipboard().setText(self.region_result())

@@ -124,6 +124,8 @@ class MainWindow(QMainWindow):
         self._pipeline = pipeline or PipelineService()
         self._batch: BatchDialog | None = None
         self._batch_controls_wired = False
+        self._last_region: BoundingBox | None = None
+        self._region_engine_id = DEFAULT_ENGINE_ID
         self._session: DocumentSession | None = None
         self._sessions: dict[Path, DocumentSession] = {}
         self._jobs = QThreadPool(self)
@@ -355,6 +357,35 @@ class MainWindow(QMainWindow):
         state = self._settings.value(WINDOW_STATE_KEY)
         if isinstance(state, QByteArray) and not state.isEmpty():
             self.restoreState(state)
+        self._fit_to_available_screen()
+
+    def _fit_to_available_screen(self) -> None:
+        """Keep a restored window and its bottom controls above the taskbar."""
+        if self.isMaximized() or self.isFullScreen():
+            return
+        screen = self.screen()
+        if screen is None:
+            return
+
+        available = screen.availableGeometry()
+        frame = self.frameGeometry()
+        frame_width = frame.width() - self.width()
+        frame_height = frame.height() - self.height()
+        self.resize(
+            min(self.width(), max(1, available.width() - frame_width)),
+            min(self.height(), max(1, available.height() - frame_height)),
+        )
+
+        frame = self.frameGeometry()
+        target_x = min(
+            max(frame.left(), available.left()),
+            available.right() - frame.width() + 1,
+        )
+        target_y = min(
+            max(frame.top(), available.top()),
+            available.bottom() - frame.height() + 1,
+        )
+        self.move(self.x() + target_x - frame.left(), self.y() + target_y - frame.top())
 
     def closeEvent(self, event: QCloseEvent) -> None:  # noqa: N802 - Qt override
         self.notifications.dismiss_all()
@@ -462,9 +493,27 @@ class MainWindow(QMainWindow):
 
     def recognise_region(self, region: BoundingBox) -> None:
         """Read the drawn rectangle: from the text layer, else with the OCR model."""
+        self._last_region = region
         self.guarded(lambda: self._recognise_region(region), title="OCR vùng chọn")
 
-    def _recognise_region(self, region: BoundingBox) -> None:
+    def rerun_region(self) -> None:
+        """Read the last region again with the model chosen in the options dock."""
+        region = self._last_region
+        if region is None or self._session is None:
+            self.notifications.notify("Hãy vẽ một vùng chọn trước.", Severity.INFO)
+            return
+        self.guarded(
+            lambda: self._recognise_region(region, force_model=True),
+            title="OCR vùng chọn",
+        )
+
+    def _engine_name(self, engine_id: str) -> str:
+        for metadata in EngineRegistry.available():
+            if metadata.engine_id == engine_id:
+                return metadata.name
+        return engine_id
+
+    def _recognise_region(self, region: BoundingBox, force_model: bool = False) -> None:
         session, displayed = self._session, self._displayed
         if session is None or displayed is None:
             return
@@ -473,8 +522,15 @@ class MainWindow(QMainWindow):
         engine_id = self._option_text("engine_id", DEFAULT_ENGINE_ID)
         config = self._engine_config(engine_id)
         detect_tables = bool(config and config.get("use_tables"))
-        if text and not detect_tables:
-            self._on_region_recognised(text)
+        model_name = self._engine_name(engine_id)
+        self._region_engine_id = engine_id
+        if text and not detect_tables and not force_model:
+            self.comparison.show_region_result(
+                text,
+                "Nguồn: lớp chữ có sẵn của PDF (không dùng mô hình). "
+                f"Bấm “OCR bằng mô hình” để nhận diện lại bằng {model_name}.",
+            )
+            self.region_recognised.emit(text)
             return
         worker = RegionWorker(
             image,
@@ -484,8 +540,10 @@ class MainWindow(QMainWindow):
             config=config,
             source_path=str(session.path),
             page_number=session.current_page,
-            preferred_text=text,
-            emit_text=not bool(text),
+            preferred_text=text if text and not force_model else "",
+            emit_text=force_model or not bool(text),
+            merge_paragraphs=self._options.get("merge_paragraphs") is not False,
+            reading_order=self._options.get("reading_order") is not False,
         )
         worker.signals.finished.connect(self._on_region_recognised)
         worker.signals.page_finished.connect(self._on_region_page_recognised)
@@ -494,14 +552,23 @@ class MainWindow(QMainWindow):
         )
         self._job_signals.add(worker.signals)
         self.comparison.show_region_result(
-            text if text else "Đang nhận diện vùng chọn…"
+            text if text and not force_model else "Đang nhận diện vùng chọn…",
+            (
+                "Nguồn: lớp chữ của PDF; bảng biểu được nhận diện bằng mô hình "
+                f"{model_name}"
+                if text and not force_model
+                else f"Nguồn: mô hình {model_name}"
+            ),
         )
         self._jobs.start(worker)
 
     def _on_region_recognised(self, text: str) -> None:
         self._job_signals.discard(self.sender())
+        model_name = self._engine_name(self._region_engine_id)
         self.comparison.show_region_result(
-            text or "Không tìm thấy chữ trong vùng chọn."
+            text or "Không tìm thấy chữ trong vùng chọn.",
+            f"Nguồn: mô hình {model_name}. Dùng “Chèn vào bản chép” để đưa vào "
+            "văn bản hoặc “Sao chép”.",
         )
         self.region_recognised.emit(text)
 
@@ -630,18 +697,22 @@ class MainWindow(QMainWindow):
         dialog.batch_finished.connect(lambda _progress: session.close())
         self._wire_batch_controls(manager)
         self._batch = dialog
-        dialog.start()
         self.batch_status.set_running(True)
+        dialog.start()
 
     def _engine_config(self, engine_id: str) -> dict[str, object] | None:
-        """Switch the table model off for engines that have one and it is unwanted."""
+        """Engine settings from the dock; table support only where it exists."""
+        config: dict[str, object] = {}
+        params = self._options.get("engine_params")
+        if isinstance(params, dict) and self._options.get("engine_id") == engine_id:
+            config.update(params)
         supports_tables = any(
             metadata.engine_id == engine_id and metadata.supports_tables
             for metadata in EngineRegistry.available()
         )
-        if not supports_tables:
-            return None
-        return {"use_tables": self._options.get("detect_tables") is not False}
+        if supports_tables:
+            config["use_tables"] = self._options.get("detect_tables") is not False
+        return config or None
 
     def _option_text(self, key: str, default: str) -> str:
         """Read a dock option defensively; it may be missing or the wrong shape."""
@@ -794,6 +865,7 @@ class MainWindow(QMainWindow):
         )
         self.comparison.transcript_edited.connect(self._on_transcript_edited)
         self.region_ocr_requested.connect(self.recognise_region)
+        self.comparison.region_rerun_requested.connect(self.rerun_region)
         return self.comparison
 
     def _create_options_dock(self) -> QDockWidget:
@@ -810,7 +882,15 @@ class MainWindow(QMainWindow):
         return dict(self._options)
 
     def _remember_options(self, options: dict[str, object]) -> None:
+        previous = self._options.get("engine_id")
         self._options = dict(options)
+        changed = previous is not None and previous != options.get("engine_id")
+        if changed and self.comparison.region_panel.isVisibleTo(self.comparison):
+            name = self._engine_name(self._option_text("engine_id", DEFAULT_ENGINE_ID))
+            self.comparison.set_region_source(
+                f"Đã đổi sang mô hình {name}. Bấm “OCR bằng mô hình” để nhận "
+                "diện lại vùng này."
+            )
 
     def open_settings(self) -> None:
         """Show the settings dialog and apply the new weights folder at once."""

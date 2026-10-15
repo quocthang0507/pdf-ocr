@@ -551,21 +551,92 @@ QPushButton#next_page_button:disabled {
 }
 
 QScrollBar#page_slider {
-    background: #eef1f6;
-    border-radius: 4px;
-    height: 10px;
-    max-width: 220px;
+    background: #e4e9f0;
+    border-radius: 3px;
+    height: 6px;
     min-width: 60px;
 }
 
 QScrollBar#page_slider::handle {
-    background-color: #1d4ed8;
-    border-radius: 4px;
+    background-color: #98a2b3;
+    border-radius: 3px;
     min-width: 20px;
 }
 
 QScrollBar#page_slider::handle:hover {
+    background-color: #1d4ed8;
+}
+
+QFrame#nav_bar {
+    background-color: #f5f7fa;
+    border-top: 1px solid #d8dee7;
+}
+
+QLabel#nav_group_label {
+    background-color: transparent;
+    color: #5a6474;
+    font-size: 11px;
+    font-weight: 600;
+}
+
+QFrame#nav_separator {
+    background-color: #d8dee7;
+    border: none;
+    max-width: 1px;
+}
+
+QPushButton#zoom_out_button,
+QPushButton#zoom_in_button,
+QPushButton#zoom_reset_button {
+    min-height: 16px;
+    padding: 4px 8px;
+}
+
+QPushButton#zoom_out_button,
+QPushButton#zoom_in_button {
+    min-width: 30px;
+    max-width: 30px;
+    padding: 0;
+    font-size: 15px;
+}
+
+QLabel#zoom_indicator {
+    background-color: transparent;
+    color: #16202e;
+    font-weight: 600;
+}
+
+QSpinBox#page_spin {
+    padding: 4px 6px;
+}
+
+QPushButton#region_insert {
+    background-color: #1d4ed8;
+    border-color: #1d4ed8;
+    color: #ffffff;
+}
+
+QPushButton#region_insert:hover {
     background-color: #1a45c0;
+}
+
+QPushButton#region_insert:disabled {
+    background-color: #eef1f6;
+    border-color: #e4e9f0;
+    color: #98a2b3;
+}
+
+QPushButton#region_copy,
+QPushButton#region_rerun,
+QPushButton#region_insert {
+    min-height: 16px;
+    padding: 4px 10px;
+}
+
+QLabel#region_source {
+    background-color: transparent;
+    color: #5a6474;
+    font-size: 12px;
 }
 
 QSpinBox::up-arrow {

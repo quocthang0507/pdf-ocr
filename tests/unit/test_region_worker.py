@@ -132,6 +132,37 @@ def test_detected_region_tables_are_rebased_to_page_coordinates(
     assert result.page.tables[0].bbox == BoundingBox(15, 25, 40, 40)
 
 
+def test_region_lines_are_joined_into_one_paragraph(qtbot) -> None:
+    class LineEngine(BaseOCREngine):
+        CONFIG_SCHEMA = {"device": ConfigField("cpu", lambda value: True)}
+
+        def _load_model(self) -> None:
+            pass
+
+        def _unload_model(self) -> None:
+            pass
+
+        def _recognize(self, image: object, page_number: int) -> OCRPage:
+            blocks = []
+            for index, text in enumerate(("Điều 1. Công nhận danh sách", "học viên", "kèm Quyết định này.")):
+                box = BoundingBox(10, 10 + index * 30, 400, 30 + index * 30)
+                line = OCRLine(words=(OCRWord(text, box),), bbox=box)
+                blocks.append(OCRBlock(lines=(line,), bbox=box))
+            return OCRPage(page_number, 420.0, 120.0, blocks=tuple(blocks))
+
+    snapshot = EngineRegistry.snapshot()
+    EngineRegistry.register("line-probe", "Dòng", "Thử")(LineEngine)
+    try:
+        image = np.full((120, 420, 3), 255, dtype=np.uint8)
+        worker = RegionWorker(image, BoundingBox(0, 0, 420, 120), "line-probe", "cpu")
+        with qtbot.waitSignal(worker.signals.finished) as blocker:
+            worker.run()
+    finally:
+        EngineRegistry.restore(snapshot)
+
+    assert blocker.args == ["Điều 1. Công nhận danh sách học viên kèm Quyết định này."]
+
+
 def test_a_recognition_failure_is_reported(qtbot, probe_engine) -> None:
     image = np.full((100, 200, 3), 255, dtype=np.uint8)
     worker = RegionWorker(image, BoundingBox(0, 0, 50, 13), ENGINE_ID, "cpu")

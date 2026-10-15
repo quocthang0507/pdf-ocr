@@ -259,6 +259,21 @@ def test_window_layout_survives_a_restart(qtbot, settings: QSettings) -> None:
     assert second.size() == first.size()
 
 
+def test_restored_window_stays_inside_the_available_screen(
+    window: MainWindow,
+) -> None:
+    available = window.screen().availableGeometry()
+    window.resize(
+        min(620, available.width()),
+        min(430, available.height()),
+    )
+    window.move(available.right(), available.bottom())
+
+    window._fit_to_available_screen()
+
+    assert available.contains(window.frameGeometry())
+
+
 def test_opening_a_valid_pdf_renders_it_on_canvas(
     window: MainWindow, qtbot, tmp_path: Path
 ) -> None:
@@ -808,6 +823,71 @@ def test_a_failed_region_recognition_is_reported(
     assert window.comparison.region_result() == ""
     toasts = window.notifications.visible_toasts()
     assert any(toast.severity.name == "ERROR" for toast in toasts)
+
+
+def test_a_text_layer_region_explains_its_source_and_can_be_rerun_with_the_model(
+    qtbot, window: MainWindow, tmp_path: Path
+) -> None:
+    import numpy as np
+
+    from src.core.models import OCRBlock, OCRLine, OCRPage, OCRWord
+    from src.engines.base_engine import BaseOCREngine, ConfigField
+    from src.engines.engine_registry import EngineRegistry
+
+    class ProbeEngine(BaseOCREngine):
+        CONFIG_SCHEMA = {"device": ConfigField("cpu", lambda v: isinstance(v, str))}
+
+        def _load_model(self) -> None:
+            pass
+
+        def _unload_model(self) -> None:
+            pass
+
+        def _recognize(self, image: object, page_number: int) -> OCRPage:
+            assert isinstance(image, np.ndarray)
+            box = BoundingBox(0, 0, image.shape[1], image.shape[0])
+            line = OCRLine(words=(OCRWord("từ-mô-hình", box),), bbox=box)
+            return OCRPage(
+                page_number=page_number,
+                width=float(image.shape[1]),
+                height=float(image.shape[0]),
+                blocks=(OCRBlock(lines=(line,), bbox=box),),
+            )
+
+    snapshot = EngineRegistry.snapshot()
+    EngineRegistry.register("rerun-probe", "Mô hình thử", "Thử")(ProbeEngine)
+    try:
+        window.open_path(_pdf(tmp_path))
+        with qtbot.waitSignal(window.region_recognised):
+            window.comparison.canvas.region_selected.emit(
+                BoundingBox(40, 120, 700, 260)
+            )
+        assert "lớp chữ" in window.comparison.region_source_label.text()
+
+        window.settings_dock.options_changed.emit(
+            {"engine_id": "rerun-probe", "device": "cpu", "dpi": 300}
+        )
+        assert "Mô hình thử" in window.comparison.region_source_label.text()
+
+        with qtbot.waitSignal(window.region_recognised, timeout=10_000) as blocker:
+            window.comparison.region_rerun_button.click()
+    finally:
+        EngineRegistry.restore(snapshot)
+
+    assert blocker.args == ["từ-mô-hình"]
+    assert window.comparison.region_result() == "từ-mô-hình"
+    assert "Mô hình thử" in window.comparison.region_source_label.text()
+
+
+def test_region_text_can_be_inserted_into_the_transcript(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    window.open_path(_pdf(tmp_path))
+    window.comparison.show_region_result("Đoạn chèn", "Nguồn: thử")
+
+    window.comparison.region_insert_button.click()
+
+    assert "Đoạn chèn" in window.comparison.transcript()
 
 
 def test_tables_recognised_in_a_region_are_saved_on_the_current_page(
