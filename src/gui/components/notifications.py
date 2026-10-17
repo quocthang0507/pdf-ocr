@@ -72,7 +72,7 @@ class Toast(QFrame):
         self.close_button = QPushButton("✕", self)
         self.close_button.setObjectName("toast_close")
         self.close_button.setFlat(True)
-        self.close_button.setFixedWidth(24)
+        self.close_button.setMinimumWidth(24)
         self.close_button.clicked.connect(self.dismiss)
         self._build_layout()
         self._apply_style()

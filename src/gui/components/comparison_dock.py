@@ -261,7 +261,7 @@ class ComparisonDock(QWidget):
         self.page_spin.setEnabled(False)
         self.page_spin.setButtonSymbols(QSpinBox.ButtonSymbols.NoButtons)
         self.page_spin.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.page_spin.setFixedWidth(64)
+        self.page_spin.setMinimumWidth(64)
         self.page_slider = QScrollBar(Qt.Orientation.Horizontal, self)
         self.page_slider.setObjectName("page_slider")
         self.page_slider.setToolTip("Cuộn để chuyển trang")
@@ -301,7 +301,7 @@ class ComparisonDock(QWidget):
             self.rotate_left_btn,
             self.rotate_right_btn,
         ):
-            button.setFixedSize(30, 30)
+            button.setMinimumSize(30, 30)
         self.zoom_reset_btn = QPushButton("Vừa trang", self)
         self.zoom_reset_btn.setObjectName("zoom_reset_button")
         self.zoom_reset_btn.setToolTip("Hiển thị vừa toàn trang")

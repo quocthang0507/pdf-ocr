@@ -101,3 +101,49 @@ def test_navigation_dock_and_main_window_integration(qtbot, tmp_path: Path) -> N
     window.rotate_current_page(90)
     assert window.document_session is not None
     assert window.document_session.page_rotation(1) == 90
+
+
+def test_hidpi_controls_and_multi_scale_icons(qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
+    from PySide6.QtCore import QSize, Qt
+    from PySide6.QtGui import QColor, QPainter
+    from src import main as entrypoint
+    from src.gui.components.status_bar import BatchStatusBar
+    from src.gui.components.tool_bar import ICON_SIZE
+
+    bar = BatchStatusBar()
+    qtbot.addWidget(bar)
+    assert bar.pause_button.minimumHeight() >= 24
+    assert bar.cancel_button.minimumHeight() >= 24
+    assert bar.pause_button.maximumHeight() > 24
+
+    dock = ComparisonDock()
+    qtbot.addWidget(dock)
+    assert dock.canvas.renderHints() & QPainter.RenderHint.Antialiasing
+    assert dock.canvas.renderHints() & QPainter.RenderHint.TextAntialiasing
+    assert dock.canvas.renderHints() & QPainter.RenderHint.SmoothPixmapTransform
+    assert dock.rotate_left_btn.minimumWidth() >= 30
+    assert dock.rotate_left_btn.maximumWidth() > 30
+    assert dock.page_spin.minimumWidth() >= 64
+    assert dock.page_spin.maximumWidth() > 64
+
+    window = MainWindow()
+    qtbot.addWidget(window)
+    window.tool_bar.apply_icon_color(QColor("#e6ebf2"))
+    icon = window.command_actions["open_file"].icon()
+    sizes = sorted(icon.availableSizes(), key=lambda s: s.width())
+    assert len(sizes) >= 2
+    assert sizes[0].width() >= ICON_SIZE
+    assert sizes[-1].width() == sizes[0].width() * 2
+
+    policies: list[object] = []
+    monkeypatch.setattr(
+        entrypoint.QGuiApplication, "instance", staticmethod(lambda: None)
+    )
+    monkeypatch.setattr(
+        entrypoint.QGuiApplication,
+        "setHighDpiScaleFactorRoundingPolicy",
+        staticmethod(lambda policy: policies.append(policy)),
+    )
+    entrypoint._configure_high_dpi()
+    assert policies == [Qt.HighDpiScaleFactorRoundingPolicy.PassThrough]
+

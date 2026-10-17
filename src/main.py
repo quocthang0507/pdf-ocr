@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import sys
 
+from PySide6.QtCore import Qt
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.config import ConfigManager
@@ -15,9 +17,18 @@ from src.services.weights_manager import ModelWeightsManager
 from src.utils.logger import configure_logging, logger
 
 
+def _configure_high_dpi() -> None:
+    """Keep fractional display scaling (125%, 150%, 175%) sharp without rounding."""
+    if QGuiApplication.instance() is None:
+        QGuiApplication.setHighDpiScaleFactorRoundingPolicy(
+            Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
+        )
+
+
 def main(argv: list[str] | None = None) -> int:
     """Start the GUI, redirecting model caches before any AI library loads."""
     configure_logging()
+    _configure_high_dpi()
     application = QApplication(argv if argv is not None else sys.argv)
     application.setOrganizationName(ORGANIZATION_NAME)
     application.setApplicationName(APPLICATION_NAME)

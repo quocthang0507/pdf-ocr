@@ -42,17 +42,8 @@ _STANDARD_ICONS: dict[str, QStyle.StandardPixmap] = {
 ICON_SIZE = 18
 
 
-def _tinted(icon: QIcon, colour: QColor, size: int = ICON_SIZE) -> QIcon:
-    """Recolour a style icon for a dark tool bar without erasing its shading.
-
-    A flat single-colour fill paints every opaque pixel alike, so a shape
-    that relies on a dark outline over a light fill (rather than on
-    transparency) turns into a blank, uniformly coloured silhouette. Mapping
-    each pixel's luminance onto a two-tone gradient keeps that contrast.
-    """
-    source = icon.pixmap(QSize(size, size))
-    if source.isNull():
-        return icon
+def _tint_pixmap(source: QPixmap, colour: QColor, scale: int) -> QPixmap:
+    """Tint a single pixmap with a duotone gradient and tag its device pixel ratio."""
     image = source.toImage().convertToFormat(QImage.Format.Format_ARGB32)
     shadow = colour.darker(280)
     for y in range(image.height()):
@@ -67,7 +58,22 @@ def _tinted(icon: QIcon, colour: QColor, size: int = ICON_SIZE) -> QIcon:
             mixed = _mix(shadow, colour, luminance)
             mixed.setAlpha(alpha)
             image.setPixelColor(x, y, mixed)
-    return QIcon(QPixmap.fromImage(image))
+    pixmap = QPixmap.fromImage(image)
+    pixmap.setDevicePixelRatio(float(scale))
+    return pixmap
+
+
+def _tinted(icon: QIcon, colour: QColor, size: int = ICON_SIZE) -> QIcon:
+    """Recolour a style icon for a dark tool bar across 1x and 2x HiDPI scales."""
+    base = icon.pixmap(QSize(size, size))
+    if base.isNull():
+        return icon
+    result = QIcon()
+    for scale in (1, 2):
+        scaled = icon.pixmap(QSize(size * scale, size * scale))
+        if not scaled.isNull():
+            result.addPixmap(_tint_pixmap(scaled, colour, scale))
+    return result
 
 
 def _mix(start: QColor, end: QColor, ratio: float) -> QColor:

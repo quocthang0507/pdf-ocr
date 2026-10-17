@@ -451,10 +451,24 @@ QStatusBar {
     background-color: #1a212b;
     border-top: 1px solid #2c3644;
     color: #9aa6b8;
+    min-height: 30px;
+    padding: 2px 6px 4px 6px;
 }
 
 QStatusBar::item {
     border: none;
+}
+
+QWidget#batch_controls_container {
+    background-color: transparent;
+}
+
+QPushButton#batch_pause,
+QPushButton#batch_cancel {
+    border-radius: 6px;
+    font-size: 12px;
+    min-height: 20px;
+    padding: 3px 12px;
 }
 
 QSpinBox::up-button,
@@ -534,10 +548,8 @@ QLabel#page_indicator {
 QPushButton#prev_page_button,
 QPushButton#next_page_button {
     min-width: 32px;
-    max-width: 32px;
     min-height: 28px;
-    max-height: 28px;
-    padding: 2px 4px;
+    padding: 2px 6px;
     font-size: 13px;
     font-weight: bold;
 }
@@ -587,16 +599,23 @@ QFrame#nav_separator {
 
 QPushButton#zoom_out_button,
 QPushButton#zoom_in_button,
-QPushButton#zoom_reset_button {
-    min-height: 16px;
-    padding: 4px 8px;
+QPushButton#rotate_left_button,
+QPushButton#rotate_right_button,
+QPushButton#zoom_reset_button,
+QPushButton#fit_width_button,
+QPushButton#uncertain_prev_button,
+QPushButton#uncertain_next_button,
+QPushButton#edit_table_button {
+    min-height: 20px;
+    padding: 4px 10px;
 }
 
 QPushButton#zoom_out_button,
-QPushButton#zoom_in_button {
+QPushButton#zoom_in_button,
+QPushButton#rotate_left_button,
+QPushButton#rotate_right_button {
     min-width: 30px;
-    max-width: 30px;
-    padding: 0;
+    padding: 2px 6px;
     font-size: 15px;
 }
 

@@ -2,14 +2,21 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QLabel, QProgressBar, QPushButton, QStatusBar, QWidget
+from PySide6.QtCore import Qt, Signal
+from PySide6.QtWidgets import (
+    QHBoxLayout,
+    QLabel,
+    QProgressBar,
+    QPushButton,
+    QStatusBar,
+    QWidget,
+)
 
 from src.workers.signals import BatchProgress
 
 _SECONDS_PER_MINUTE = 60
 _SECONDS_PER_HOUR = 3600
-CONTROL_HEIGHT = 22
+CONTROL_HEIGHT = 24
 PAUSE_LABEL = "Tạm dừng"
 RESUME_LABEL = "Tiếp tục"
 
@@ -37,6 +44,7 @@ class BatchStatusBar(QStatusBar):
         super().__init__(parent)
         self.setObjectName("batch_status_bar")
         self.setSizeGripEnabled(False)
+        self.setContentsMargins(8, 2, 10, 4)
         self.count_label = _label(self, "batch_counts")
         self.eta_label = _label(self, "batch_eta")
         self.progress_bar = QProgressBar(self)
@@ -47,11 +55,18 @@ class BatchStatusBar(QStatusBar):
         self.pause_button = _button(self, PAUSE_LABEL, "batch_pause")
         self.cancel_button = _button(self, "Hủy", "batch_cancel")
         self._paused = False
-        self.addPermanentWidget(self.count_label)
-        self.addPermanentWidget(self.eta_label)
-        self.addPermanentWidget(self.progress_bar)
-        self.addPermanentWidget(self.pause_button)
-        self.addPermanentWidget(self.cancel_button)
+        controls = QWidget(self)
+        controls.setObjectName("batch_controls_container")
+        row = QHBoxLayout(controls)
+        row.setContentsMargins(8, 2, 8, 2)
+        row.setSpacing(8)
+        row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self.count_label)
+        row.addWidget(self.eta_label)
+        row.addWidget(self.progress_bar)
+        row.addWidget(self.pause_button)
+        row.addWidget(self.cancel_button)
+        self.addPermanentWidget(controls)
         self.pause_button.clicked.connect(self._toggle_pause)
         self.cancel_button.clicked.connect(self._request_cancel)
         self.set_running(False)
@@ -103,8 +118,8 @@ def _label(parent: QWidget, name: str) -> QLabel:
 
 
 def _button(parent: QWidget, text: str, name: str) -> QPushButton:
-    """Keep controls short enough that the status bar does not clip them."""
+    """Keep controls compact while allowing HiDPI font metrics to expand cleanly."""
     button = QPushButton(text, parent)
     button.setObjectName(name)
-    button.setFixedHeight(CONTROL_HEIGHT)
+    button.setMinimumHeight(CONTROL_HEIGHT)
     return button
