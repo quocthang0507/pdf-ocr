@@ -91,7 +91,9 @@ phần nhận diện được thay bằng engine giả lập, mọi khâu còn l
 
 ---
 
-## Đóng gói bản Portable
+## Đóng gói bản Portable & Tự động hóa CI/CD
+
+### Đóng gói cục bộ
 
 ```bash
 python packaging/build_portable.py --with-weights
@@ -99,6 +101,13 @@ python packaging/build_portable.py --with-weights
 
 Kết quả nằm ở `dist/pdf-ocr/` kèm `dist/pdf-ocr-portable.zip`. Ứng dụng khi được đóng gói sẽ
 tìm thư mục `models/` ngay cạnh tệp chạy, sau đó mới đến `src/models/`.
+
+### GitHub Actions (CI & Release tự động)
+
+Dự án đi kèm 2 workflow trong `.github/workflows/`:
+
+- **[`.github/workflows/ci.yml`](.github/workflows/ci.yml):** Tự động chạy trên mỗi lần `push` và `pull_request` — kiểm tra cổng chất lượng tĩnh (`ruff`, `black`, `isort`, `mypy --strict`, `bandit`) và chạy toàn bộ bộ kiểm thử (`unit`, `integration`, `gui` ở chế độ headless `QT_QPA_PLATFORM=offscreen`) trên **Ubuntu, Windows và macOS**.
+- **[`.github/workflows/release.yml`](.github/workflows/release.yml):** Kích hoạt khi đẩy tag dạng `v*.*.*` (ví dụ `git tag v0.2.0 && git push origin v0.2.0`) hoặc bấm **Run workflow** trên GitHub — tự động đóng gói bản Portable cho **Windows (`windows-x64`), Linux (`linux-x64`), macOS (`macos`)**, sinh mã băm `.sha256` và đăng tải lên **GitHub Releases** kèm ghi chú phát hành từ `docs/release_notes.md`.
 
 ---
 
