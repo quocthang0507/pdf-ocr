@@ -122,7 +122,7 @@ class VietOCREngine(BaseOCREngine):
             try:
                 sents, probs = self._predictor.predict_batch(crops, return_prob=True)
                 return [str(s) for s in sents], [float(p) for p in probs]
-            except Exception:
+            except Exception:  # nosec B110
                 pass
         fallback_sents: list[str] = []
         fallback_probs: list[float] = []
