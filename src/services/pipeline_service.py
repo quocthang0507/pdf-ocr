@@ -64,6 +64,7 @@ class PageOptions:
     detect_tables: bool = True
     reading_order: bool = True
     merge_paragraphs: bool = True
+    spell_check: bool = True
     force_ocr: bool = False
 
     @classmethod
@@ -85,6 +86,7 @@ class PageOptions:
             detect_tables=flag("detect_tables"),
             reading_order=flag("reading_order"),
             merge_paragraphs=flag("merge_paragraphs"),
+            spell_check=flag("spell_check"),
             force_ocr=flag("force_ocr", False),
         )
 
@@ -163,7 +165,9 @@ class PageSession:
                 self._engines,
                 self._page_options,
             )
-            return self._service.postprocessor.process_page(page)
+            return self._service.postprocessor.process_page(
+                page, spell_check=self._page_options.spell_check
+            )
         except PDFOCRError:
             raise
         except Exception as error:

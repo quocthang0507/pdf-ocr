@@ -88,3 +88,60 @@ def test_preserves_confidence_and_flags_words_below_eighty_percent() -> None:
     assert low.is_low_confidence
     assert accepted.confidence == pytest.approx(0.8)
     assert not accepted.is_low_confidence
+
+
+@pytest.mark.unit
+def test_vietnamese_spell_corrector_fixes_ngram_and_diacritic_errors() -> None:
+    from src.core.spell_corrector import VietnameseSpellCorrector, is_valid_token
+
+    corrector = VietnameseSpellCorrector()
+    raw = (
+        "Có kinh nghiệm lý đội nhóm gổm 20 nhan vien cấp dưởi. "
+        "Tính tổ chửc và kỷ luật cao, không ngửng đổi mởi để cải thiện "
+        "sản phẩm và dịch vụ đi kèm Luôn đặt trải nghiệm của khách hàng "
+        "lên trên cùng và nỗ lực đưa tên tuổi thuong hiệu tiếp can đưạc "
+        "tệp người rộng hon."
+    )
+    fixed = corrector.fix_spelling(raw)
+
+    assert "gồm 20 nhân viên cấp dưới" in fixed
+    assert "tổ chức" in fixed
+    assert "không ngừng đổi mới" in fixed
+    assert "thương hiệu tiếp cận được" in fixed
+    assert "rộng hơn" in fixed
+    assert is_valid_token("0912345678") is False
+    assert is_valid_token("user@example.com") is False
+    assert is_valid_token("2026") is False
+    assert is_valid_token("Nguyễn_Văn") is False
+    assert is_valid_token("trường") is True
+
+
+@pytest.mark.unit
+def test_xycut_projection_and_overlapping_box_merge() -> None:
+    import numpy as np
+
+    from src.core.layout_analyzer import (
+        merge_overlapping_boxes,
+        projection_by_bboxes,
+        split_projection_profile,
+    )
+
+    boxes = np.array([[10, 10, 50, 30], [70, 10, 110, 30]])
+    proj_x = projection_by_bboxes(boxes, axis=0)
+    assert proj_x.shape == (110,)
+    splits = split_projection_profile(proj_x, min_value=0, min_gap=5)
+    assert splits is not None
+    starts, ends = splits
+    assert list(starts) == [10, 70]
+    assert list(ends) == [50, 110]
+
+    merged = merge_overlapping_boxes(
+        [
+            BoundingBox(10, 10, 60, 40),
+            BoundingBox(50, 20, 100, 50),
+            BoundingBox(150, 10, 200, 40),
+        ]
+    )
+    assert len(merged) == 2
+    assert merged[0] == BoundingBox(10, 10, 100, 50)
+    assert merged[1] == BoundingBox(150, 10, 200, 40)

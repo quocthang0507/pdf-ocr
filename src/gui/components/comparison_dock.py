@@ -30,6 +30,7 @@ from PySide6.QtWidgets import (
 
 from src.constants import LOW_CONFIDENCE_COLOR, BlockType
 from src.core.models import BoundingBox, OCRBlock, OCRPage, OCRTable
+from src.core.spell_corrector import VietnameseSpellCorrector
 from src.core.transcript import BLOCK_SEPARATOR
 from src.gui.components.document_canvas import DocumentCanvas
 from src.gui.dialogs.find_replace import FindReplaceDialog
@@ -233,6 +234,11 @@ class ComparisonDock(QWidget):
         self.uncertain_next_btn = QPushButton("Từ nghi ngờ ▶", self.structure_panel)
         self.uncertain_next_btn.setObjectName("uncertain_next_button")
         self.uncertain_next_btn.setToolTip("Đi tới từ có độ tin cậy thấp tiếp theo")
+        self.spell_fix_btn = QPushButton("Sửa chính tả", self.structure_panel)
+        self.spell_fix_btn.setObjectName("spell_fix_button")
+        self.spell_fix_btn.setToolTip(
+            "Sửa lỗi dấu thanh và từ ghép tiếng Việt theo ngữ cảnh N-gram"
+        )
         self.table_combo = QComboBox(self.structure_panel)
         self.table_combo.setObjectName("table_combo")
         self.table_combo.setToolTip("Chọn bảng biểu để xem trên trang")
@@ -334,6 +340,7 @@ class ComparisonDock(QWidget):
         )
         self.uncertain_prev_btn.clicked.connect(self.jump_to_prev_uncertain)
         self.uncertain_next_btn.clicked.connect(self.jump_to_next_uncertain)
+        self.spell_fix_btn.clicked.connect(self.apply_spell_correction)
 
     def _build_layout(self) -> None:
         canvas_pane = QWidget(self)
@@ -341,30 +348,7 @@ class ComparisonDock(QWidget):
         canvas_layout.setContentsMargins(0, 0, 0, 0)
         canvas_layout.setSpacing(4)
         canvas_layout.addWidget(self.canvas, 1)
-
-        nav_bar = QFrame(canvas_pane)
-        nav_bar.setObjectName("nav_bar")
-        nav_layout = QHBoxLayout(nav_bar)
-        nav_layout.setContentsMargins(8, 6, 8, 6)
-        nav_layout.setSpacing(6)
-        nav_layout.addWidget(_group_label("Thu phóng", nav_bar))
-        nav_layout.addWidget(self.zoom_out_btn)
-        nav_layout.addWidget(self.zoom_label)
-        nav_layout.addWidget(self.zoom_in_btn)
-        nav_layout.addWidget(self.zoom_reset_btn)
-        nav_layout.addWidget(self.fit_width_btn)
-        nav_layout.addWidget(self.rotate_left_btn)
-        nav_layout.addWidget(self.rotate_right_btn)
-        nav_layout.addSpacing(8)
-        nav_layout.addWidget(_separator(nav_bar))
-        nav_layout.addSpacing(8)
-        nav_layout.addWidget(_group_label("Trang", nav_bar))
-        nav_layout.addWidget(self.prev_page_btn)
-        nav_layout.addWidget(self.page_spin)
-        nav_layout.addWidget(self.next_page_btn)
-        nav_layout.addWidget(self.page_slider, 1)
-        nav_layout.addWidget(self.page_label)
-        canvas_layout.addWidget(nav_bar)
+        canvas_layout.addWidget(self._build_nav_bar(canvas_pane))
 
         text_pane = QWidget(self)
         text_layout = QVBoxLayout(text_pane)
@@ -377,6 +361,7 @@ class ComparisonDock(QWidget):
         structure_layout.addWidget(self.structure_label, 1)
         structure_layout.addWidget(self.uncertain_prev_btn)
         structure_layout.addWidget(self.uncertain_next_btn)
+        structure_layout.addWidget(self.spell_fix_btn)
         structure_layout.addWidget(self.table_combo)
         structure_layout.addWidget(self.edit_table_button)
         self.table_combo.currentIndexChanged.connect(self._show_table_on_canvas)
@@ -407,6 +392,47 @@ class ComparisonDock(QWidget):
         layout = QVBoxLayout(self)
         layout.setContentsMargins(0, 0, 0, 0)
         layout.addWidget(splitter)
+
+    def _build_nav_bar(self, parent: QWidget) -> QFrame:
+        nav_bar = QFrame(parent)
+        nav_bar.setObjectName("nav_bar")
+        nav_layout = QVBoxLayout(nav_bar)
+        nav_layout.setContentsMargins(8, 4, 8, 4)
+        nav_layout.setSpacing(4)
+        zoom_row = QHBoxLayout()
+        zoom_row.setContentsMargins(0, 0, 0, 0)
+        zoom_row.setSpacing(6)
+        zoom_row.addWidget(_group_label("Thu phóng", nav_bar))
+        zoom_row.addWidget(self.zoom_out_btn)
+        zoom_row.addWidget(self.zoom_label)
+        zoom_row.addWidget(self.zoom_in_btn)
+        zoom_row.addWidget(self.zoom_reset_btn)
+        zoom_row.addWidget(self.fit_width_btn)
+        zoom_row.addWidget(_separator(nav_bar))
+        zoom_row.addWidget(self.rotate_left_btn)
+        zoom_row.addWidget(self.rotate_right_btn)
+        zoom_row.addStretch(1)
+        page_row = QHBoxLayout()
+        page_row.setContentsMargins(0, 0, 0, 0)
+        page_row.setSpacing(6)
+        page_row.addWidget(_group_label("Trang", nav_bar))
+        page_row.addWidget(self.prev_page_btn)
+        page_row.addWidget(self.page_spin)
+        page_row.addWidget(self.next_page_btn)
+        page_row.addWidget(self.page_slider, 1)
+        page_row.addWidget(self.page_label)
+        nav_layout.addLayout(zoom_row)
+        nav_layout.addLayout(page_row)
+        return nav_bar
+
+    def apply_spell_correction(self) -> None:
+        """Run contextual Vietnamese N-gram spell correction on the transcript."""
+        current = self.editor.toPlainText()
+        if not current.strip():
+            return
+        corrected = VietnameseSpellCorrector().fix_spelling(current)
+        if corrected != current:
+            self.editor.setPlainText(corrected)
 
     def _create_shortcuts(self) -> tuple[QShortcut, ...]:
         """Qt only binds Ctrl+Shift+Z for redo on some platforms."""

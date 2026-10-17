@@ -17,17 +17,19 @@ sau khi đã tải mô hình.
 | Nhóm | Nội dung |
 | :-- | :-- |
 | **Đầu vào** | PDF, PNG, JPG, TIFF, BMP, WebP; kéo thả; mở cả thư mục |
-| **Nhận diện** | VietOCR, PaddleOCR, Surya, TrOCR, EasyOCR qua Provider Pattern; tự động lùi sang engine dự phòng |
-| **PDF có sẵn text** | Đọc thẳng lớp text, không cần OCR, dưới 1 giây mỗi trang |
+| **Nhận diện (7 Engine)** | **VietOCR** (`vgg_transformer`, `vgg_seq2seq`, `resnet_transformer`), **PaddleOCR** (PP-OCRv3/v4/v5/v6, `PP-StructureV3`, `PaddleOCR-VL` 0.9B, tier `mobile`/`server`/`tiny`, 8 ngôn ngữ), **Surya OCR**, **TrOCR** (Small/Base/Large Handwritten, Printed, Scene Text `str`), **EasyOCR** (`latin_g2`, `english_g2`, `latin_g1`, `craft`/`dbnet18`), **Chandra OCR** (`chandra` v1, `chandra-ocr-2` 5B), **dots.ocr** (`dots.ocr` 1.7B, `dots.mocr` 1.5); tự động lùi sang engine dự phòng |
+| **Model tùy chỉnh** | Nhập trực tiếp tệp trọng số riêng (`.pth`, `.pdparams`) hoặc thư mục checkpoint HuggingFace/Paddle từ giao diện |
+| **PDF có sẵn text** | Đọc thẳng lớp text dưới 1 giây/trang; có tùy chọn **Ép buộc OCR** (`force_ocr`) khi lớp chữ gốc bị lỗi bảng mã |
+| **Không gian đọc PDF** | Khung điều hướng trái (**Thông tin tệp**, **Trang** kèm huy hiệu `✓ Đã OCR`, **Mục lục** PDF, **Tìm kiếm** toàn văn), xoay trang 90° (`↺`/`↻`), vừa trang / vừa ngang, cuộn chuyển trang & `Ctrl + Lăn chuột` thu phóng, OCR nhanh riêng trang đang xem |
 | **Tiền xử lý** | Tự xoay đúng hướng, làm thẳng ảnh nghiêng, cắt viền, khử bóng và tăng tương phản |
-| **Bố cục** | Thứ tự đọc tự nhiên cho tài liệu nhiều cột; tách bảng biểu kèm ô gộp |
-| **Hậu xử lý** | Chuẩn hóa Unicode NFC, sửa nhầm lẫn ký tự, chuẩn hóa vị trí dấu thanh |
-| **Soát lỗi** | So sánh ảnh–văn bản đồng bộ hai chiều, tô vàng từ tin cậy thấp, Undo/Redo, Tìm & Thay thế |
-| **Chọn vùng** | Vẽ hình chữ nhật để chỉ nhận diện một phần trang |
+| **Bố cục** | Phân tích chiếu ngang/dọc (XY-Cut Projection Profile) & thứ tự đọc tự nhiên cho tài liệu nhiều cột; tách bảng biểu kèm ô gộp |
+| **Hậu xử lý & Sửa chính tả** | Chuẩn hóa Unicode NFC, sửa nhầm lẫn ký tự, chuẩn hóa dấu thanh, và **Sửa lỗi chính tả & dấu tiếng Việt theo ngữ cảnh N-gram** (`VietnameseSpellCorrector` + `SymSpell` tùy chọn, bảo vệ số/email/SĐT/tên riêng) |
+| **Soát lỗi** | So sánh ảnh–văn bản đồng bộ hai chiều, tô vàng từ tin cậy thấp, nút điều hướng nhanh **◀ Từ nghi ngờ / Từ nghi ngờ ▶**, nút **Sửa chính tả** 1 chạm, Undo/Redo, Tìm & Thay thế |
+| **Chọn vùng** | Vẽ hình chữ nhật (`Ctrl+R`) để chỉ nhận diện một phần trang |
 | **Bảng biểu** | Trình sửa bảng dạng lưới trước khi xuất Excel |
 | **Xử lý nền** | QThreadPool; tạm dừng, tiếp tục, hủy; phần trăm và thời gian còn lại; thu hồi RAM/VRAM sau mỗi trang |
 | **Xuất** | PDF tìm kiếm được, DOCX, XLSX, Markdown, TXT, JSON — ghi nguyên tử |
-| **Giao diện** | Chủ đề Sáng/Tối/Theo hệ thống, thông báo toast, tiếng Việt và tiếng Anh |
+| **Giao diện & HiDPI** | Chủ đề Sáng/Tối/Theo hệ thống, tương thích màn hình **HiDPI** (125%, 150%, 200% với icon đa độ phân giải `@2x` và bố cục co giãn), thông báo toast, tiếng Việt và tiếng Anh |
 | **Lưu trữ** | Cơ sở dữ liệu SQLite riêng trong thư mục ứng dụng; thư mục weights tùy chỉnh được |
 
 ---
@@ -76,12 +78,12 @@ Chạy riêng từng nhóm: `pytest -m unit`, `pytest -m integration`, `pytest -
 
 | Cổng | Ngưỡng | Hiện tại |
 | :-- | :-- | :-- |
-| Kiểm thử | Tất cả xanh | 489 |
-| Độ phủ | ≥ 80% | 89.6% |
+| Kiểm thử | Tất cả xanh | 600+ |
+| Độ phủ | ≥ 80% | ~90% |
 | `ruff` / `black` / `isort` | 0 lỗi | 0 |
-| `mypy --strict` | 0 lỗi | 0 |
+| `mypy --strict` | 0 lỗi | 0 (71 tệp) |
 | `bandit` | 0 cảnh báo | 0 |
-| Kích thước hàm / tệp | ≤ 50 / ≤ 800 dòng | 50 / 410 |
+| Kích thước hàm / tệp | ≤ 50 / ≤ 800 dòng | 50 / ≤ 800 |
 
 Bộ tài liệu mẫu nằm ở `tests/fixtures/` và có thể dựng lại bằng
 `python tests/fixtures/generate_fixtures.py`. Kiểm thử end-to-end chạy hoàn toàn ngoại tuyến:
@@ -104,16 +106,16 @@ tìm thư mục `models/` ngay cạnh tệp chạy, sau đó mới đến `src/m
 
 ```
 src/
-├── main.py            Điểm khởi chạy: logging → ngôn ngữ → theme → weights → cửa sổ
+├── main.py            Điểm khởi chạy: HiDPI scaling → logging → ngôn ngữ → theme → weights → cửa sổ
 ├── config.py          Preferences bất biến; SQLite là nguồn chính, JSON là bản sao
 ├── constants.py       Từ vựng dùng chung: loại khối, mã màu, ngôn ngữ
-├── core/              Domain thuần: models bất biến, loader, phân loại PDF,
-│                      tiền xử lý, phân tích bố cục, tách bảng, hậu xử lý
+├── core/              Domain thuần: models bất biến, loader, phân loại PDF, tiền xử lý,
+│                      phân tích bố cục (XY-Cut), tách bảng, hậu xử lý & sửa chính tả N-gram
 ├── services/          Điều phối: pipeline, phiên xử lý theo trang, weights, thiết bị, SQLite
-├── engines/           Provider OCR (Registry + Adapter), engine_session quản lý vòng đời
+├── engines/           Provider OCR (VietOCR, PaddleOCR, Surya, TrOCR, EasyOCR, Chandra, dots.ocr)
 ├── exporters/         Provider xuất tệp (Registry + Adapter), ghi nguyên tử
 ├── workers/           QRunnable theo trang, hàng đợi batch, tín hiệu tiến độ
-├── gui/               PySide6: cửa sổ chính, canvas, bộ so sánh, các hộp thoại, theme, i18n
+├── gui/               PySide6: cửa sổ chính, dock điều hướng PDF, canvas, bộ so sánh, hộp thoại, theme, i18n
 └── utils/             Logging, tiện ích ảnh và đường dẫn
 ```
 

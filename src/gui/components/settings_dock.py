@@ -66,6 +66,12 @@ STRUCTURE_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "Gộp các dòng thành đoạn văn",
         "Nối các dòng liên tiếp thuộc cùng một đoạn thành một khối.",
     ),
+    (
+        "spell_check",
+        "Sửa lỗi chính tả & dấu tiếng Việt (N-gram)",
+        "Tự động sửa lỗi dấu thanh, nguyên âm mũ/móc và từ ghép tiếng Việt "
+        "theo ngữ cảnh N-gram (1/2/3-gram) sau khi OCR.",
+    ),
 )
 TABLE_UNSUPPORTED_TIP = "Mô hình đang chọn không hỗ trợ nhận diện bảng biểu."
 
@@ -739,6 +745,7 @@ class SettingsDock(QWidget):
             and self.structure_boxes["detect_tables"].isChecked(),
             "reading_order": self.structure_boxes["reading_order"].isChecked(),
             "merge_paragraphs": self.structure_boxes["merge_paragraphs"].isChecked(),
+            "spell_check": self.structure_boxes["spell_check"].isChecked(),
         }
 
     def _publish(self) -> None:

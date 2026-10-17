@@ -1,0 +1,166 @@
+name: Release — Build Portable & Publish
+
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "Optional release tag to publish (e.g. v0.2.0). Leave empty for build-only artifact run."
+        required: false
+        default: ""
+
+permissions:
+  contents: write
+
+env:
+  QT_QPA_PLATFORM: offscreen
+  PYTHONUTF8: "1"
+
+jobs:
+  verify:
+    name: Verify Quality Gates & Test Suite
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Linux system libraries for PySide6 & OpenCV
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 \
+            libglib2.0-0 \
+            libegl1 \
+            libxkbcommon0 \
+            libdbus-1-3 \
+            libfontconfig1
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install -r requirements-dev.txt
+
+      - name: Run static quality gates
+        run: |
+          python -m ruff check src/ tests/
+          python -m black --check src/ tests/
+          python -X utf8 -m isort --check-only src/ tests/
+          python -m mypy src/
+          python -m bandit -c pyproject.toml -r src/
+
+      - name: Generate test fixtures & run full test suite
+        run: |
+          python tests/fixtures/generate_fixtures.py
+          python -m pytest tests/ --cov=src --cov-report=term-missing
+
+  build-portable:
+    name: Build Portable (${{ matrix.platform_name }})
+    needs: verify
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            platform_name: windows-x64
+          - os: ubuntu-latest
+            platform_name: linux-x64
+          - os: macos-latest
+            platform_name: macos
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: "pip"
+
+      - name: Install Linux system libraries
+        if: runner.os == 'Linux'
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            libgl1 \
+            libglib2.0-0 \
+            libegl1 \
+            libxkbcommon0 \
+            libdbus-1-3 \
+            libfontconfig1
+
+      - name: Install package and PyInstaller
+        run: |
+          python -m pip install --upgrade pip
+          python -m pip install -e .
+          python -m pip install -r requirements-dev.txt
+
+      - name: Build portable bundle via PyInstaller
+        run: python packaging/build_portable.py
+
+      - name: Rename portable archive & generate SHA256 checksum
+        shell: bash
+        run: |
+          TARGET_ZIP="dist/pdf-ocr-portable-${{ matrix.platform_name }}.zip"
+          mv dist/pdf-ocr-portable.zip "${TARGET_ZIP}"
+          python -c "
+          import hashlib, pathlib
+          p = pathlib.Path('${TARGET_ZIP}')
+          digest = hashlib.sha256(p.read_bytes()).hexdigest()
+          pathlib.Path(str(p) + '.sha256').write_text(f'{digest}  {p.name}\n', encoding='utf-8')
+          "
+
+      - name: Upload portable bundle artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: pdf-ocr-portable-${{ matrix.platform_name }}
+          path: |
+            dist/pdf-ocr-portable-${{ matrix.platform_name }}.zip
+            dist/pdf-ocr-portable-${{ matrix.platform_name }}.zip.sha256
+          retention-days: 30
+
+  publish-release:
+    name: Publish GitHub Release
+    needs: build-portable
+    if: startsWith(github.ref, 'refs/tags/v') || github.event.inputs.tag != ''
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Download all portable artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: release-assets
+          merge-multiple: true
+
+      - name: Determine release tag
+        id: meta
+        shell: bash
+        run: |
+          if [ -n "${{ github.event.inputs.tag }}" ]; then
+            echo "tag=${{ github.event.inputs.tag }}" >> "$GITHUB_OUTPUT"
+          else
+            echo "tag=${GITHUB_REF#refs/tags/}" >> "$GITHUB_OUTPUT"
+          fi
+
+      - name: Create or Update GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.meta.outputs.tag }}
+          name: "PDF OCR ${{ steps.meta.outputs.tag }}"
+          body_path: docs/release_notes.md
+          generate_release_notes: true
+          files: |
+            release-assets/*.zip
+            release-assets/*.sha256

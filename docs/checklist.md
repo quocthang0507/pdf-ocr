@@ -374,3 +374,32 @@
   - **Acceptance:** 100% commit messages tuân thủ định dạng; không có commit trực tiếp vào `main`; toàn bộ test và linters đều xanh trên CI/local.
   - **Verify:** `git log --oneline -n 20`
   - **Files:** `README.md`, `docs/checklist.md`
+
+---
+
+### Giai Đoạn 9: Mở Rộng 7 Mô Hình Đa Biến Thể, Không Gian Đọc PDF Chuyên Nghiệp, Sửa Chính Tả Tiếng Việt N-gram & Tương Thích HiDPI (v0.2.0)
+
+- [x] **Task 9.1: Mở rộng hệ sinh thái 7 Engine OCR, Đa Biến Thể & Nhập Model Tùy Chỉnh**
+  - **Mục tiêu:** Tích hợp thêm `ChandraOCREngine` (`datalab-to/chandra` v1, `datalab-to/chandra-ocr-2` 5B) và `DotsOCREngine` (`rednote-hilab/dots.ocr` 1.7B, `rednote-hilab/dots.mocr` 1.5, `dots-studio/dots.ocr`). Mở rộng biến thể cho `PaddleOCREngine` (`PP-OCRv3..v6`, `ocr` / `pp_structure_v3` / `paddleocr_vl` 0.9B, tier `mobile`/`server`/`tiny`, 8 ngôn ngữ), `VietOCREngine` (`vgg_transformer`, `vgg_seq2seq`, `resnet_transformer`), `TransformerOCREngine` (Small/Base/Large Handwritten, Printed, Scene Text `str`), và `EasyOCREngine` (`latin_g2`, `english_g2`, `latin_g1`, `craft`/`dbnet18`). Hỗ trợ nhập trực tiếp tệp `.pth`, `.pdparams` hoặc thư mục checkpoint từ `SettingsDialog` và `SettingsDock`.
+  - **Acceptance:** Toàn bộ 7 engine và các biến thể hiển thị đầy đủ trên giao diện, truyền đúng siêu tham số vào engine và lưu bền vững trong cấu hình.
+  - **Verify:** `pytest tests/unit/test_engines.py tests/unit/test_chandra_dots_engines.py tests/gui/test_settings_dialog.py -v`
+  - **Files:** `src/engines/*.py`, `src/services/weights_manager.py`, `src/gui/components/settings_dock.py`, `src/gui/dialogs/settings_dialog.py`, `tests/unit/test_chandra_dots_engines.py`
+
+- [x] **Task 9.2: Thiết kế Không gian đọc PDF & Soát lỗi OCR chuyên nghiệp (`NavigationDock` & `ComparisonDock`)**
+  - **Mục tiêu:** Xây dựng `NavigationDock` bên trái gồm Thẻ thông tin tài liệu (tên tệp, số trang, dung lượng, bộ đếm `Đã OCR: X/Y trang`, nút **OCR trang hiện tại**) và 3 tab (**Trang** kèm huy hiệu `✓ Đã OCR` / `○ Chưa OCR`, **Mục lục** PDF Bookmarks/Outline, **Tìm kiếm** toàn văn). Nâng cấp `DocumentCanvas` và `ComparisonDock` với chế độ **Vừa ngang** (`fit_width`), xoay trang 90° (`↺`/`↻`), cuộn chuột chuyển trang ở biên đầu/cuối, `Ctrl + Lăn chuột` thu phóng, điều hướng **`◀ Từ nghi ngờ` / `Từ nghi ngờ ▶`**, và tùy chọn **Ép buộc OCR (`force_ocr`)**.
+  - **Acceptance:** Mở PDF hiển thị đầy đủ thông tin tệp, mục lục và tìm kiếm toàn văn; xoay trang, vừa ngang và duyệt từ nghi ngờ hoạt động mượt mà; `force_ocr` buộc quét ảnh ngay cả trên trang PDF có lớp chữ sẵn.
+  - **Verify:** `pytest tests/gui/test_navigation_dock.py tests/gui/test_comparison_dock.py tests/gui/test_document_canvas.py tests/gui/test_main_window.py -v`
+  - **Files:** `src/gui/components/navigation_dock.py`, `src/gui/components/comparison_dock.py`, `src/gui/components/document_canvas.py`, `src/gui/document_session.py`, `src/gui/main_window.py`, `tests/gui/test_navigation_dock.py`
+
+- [x] **Task 9.3: Sửa lỗi chính tả & dấu tiếng Việt theo ngữ cảnh N-gram (`VietnameseSpellCorrector`) & Chiếu XY-Cut**
+  - **Mục tiêu:** Cài đặt `src/core/spell_corrector.py` sửa lỗi chính tả và dấu tiếng Việt hậu OCR dựa trên ngữ cảnh 1/2/3-gram và từ điển âm tiết (tích hợp `SymSpell` tùy chọn), tự động bảo vệ số, phần trăm, ngày tháng, email, SĐT Việt Nam và tên riêng viết hoa (`Np`). Bổ sung `projection_by_bboxes`, `split_projection_profile`, `merge_overlapping_boxes` vào `src/core/layout_analyzer.py`. Nối tùy chọn `spell_check` vào `Postprocessor`, `SettingsDock` và nút **Sửa chính tả** 1 chạm trên `ComparisonDock`.
+  - **Acceptance:** Khôi phục chính xác dấu tiếng Việt trong các cụm từ thực tế (`đưạc` -> `được`, `cấp dưởi` -> `cấp dưới`, `tổ chửc` -> `tổ chức`, `nhan vien` -> `nhân viên`, `thuong hiệu tiếp can` -> `thương hiệu tiếp cận`) mà không làm hỏng số liệu, email hay tên riêng.
+  - **Verify:** `pytest tests/unit/test_spell_corrector.py tests/unit/test_postprocessor.py tests/unit/test_layout_analyzer.py -v`
+  - **Files:** `src/core/spell_corrector.py`, `src/core/postprocessor.py`, `src/core/layout_analyzer.py`, `tests/unit/test_spell_corrector.py`
+
+- [x] **Task 9.4: Tương thích hiển thị trên màn hình HiDPI (125%, 150%, 200%, 4K)**
+  - **Mục tiêu:** Kích hoạt `HighDpiScaleFactorRoundingPolicy.PassThrough` trong `src/main.py`; dựng icon thanh công cụ đa độ phân giải (`@1x` / `@2x`) theo `devicePixelRatio` trong `src/gui/components/tool_bar.py`; loại bỏ các giới hạn `setFixedHeight` / `setFixedSize` / `max-height` gây cắt chữ tiếng Việt và chia thanh điều hướng `ComparisonDock` thành 2 hàng có khoảng đệm góc cửa sổ an toàn.
+  - **Acceptance:** Toàn bộ nút bấm, ô chọn và thanh công cụ hiển thị sắc nét, không bị cắt dấu tiếng Việt hay sát mép cửa sổ ở các mức phóng đại màn hình 100%, 125%, 150%, 200%.
+  - **Verify:** `pytest tests/gui/test_main_window.py tests/gui/test_comparison_dock.py tests/gui/test_theme_manager.py -v`
+  - **Files:** `src/main.py`, `src/gui/components/tool_bar.py`, `src/gui/components/comparison_dock.py`, `src/gui/components/status_bar.py`, `src/gui/styles/dark_theme.qss`, `src/gui/styles/light_theme.qss`
+

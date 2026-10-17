@@ -14,14 +14,14 @@
 2. [Làm quen với giao diện](#2-làm-quen-với-giao-diện)
 3. [Quy trình cơ bản: từ tệp đến kết quả](#3-quy-trình-cơ-bản-từ-tệp-đến-kết-quả)
 4. [Chọn mô hình và thiết bị chạy](#4-chọn-mô-hình-và-thiết-bị-chạy)
-5. [Lưu mô hình vào ổ cứng ngoài](#5-lưu-mô-hình-vào-ổ-cứng-ngoài)
+5. [Lưu mô hình vào ổ cứng ngoài & Nhập model riêng](#5-lưu-mô-hình-vào-ổ-cứng-ngoài--nhập-model-riêng)
 6. [Soát lỗi bằng bộ so sánh song song](#6-soát-lỗi-bằng-bộ-so-sánh-song-song)
 7. [Chỉ nhận diện một vùng](#7-chỉ-nhận-diện-một-vùng)
 8. [Sửa bảng biểu trước khi xuất Excel](#8-sửa-bảng-biểu-trước-khi-xuất-excel)
 9. [Quét hàng loạt](#9-quét-hàng-loạt)
 10. [Xuất tài liệu](#10-xuất-tài-liệu)
-11. [Giao diện và ngôn ngữ](#11-giao-diện-và-ngôn-ngữ)
-12. [Bảng phím tắt](#12-bảng-phím-tắt)
+11. [Giao diện, HiDPI và ngôn ngữ](#11-giao-diện-hidpi-và-ngôn-ngữ)
+12. [Bảng phím tắt & Thao tác chuột](#12-bảng-phím-tắt--thao-tác-chuột)
 13. [Mẹo tăng độ chính xác](#13-mẹo-tăng-độ-chính-xác)
 14. [Xử lý sự cố](#14-xử-lý-sự-cố)
 15. [Bản Portable: mang sang máy khác](#15-bản-portable-mang-sang-máy-khác)
@@ -67,26 +67,31 @@ pytest tests/ --cov=src --cov-report=term-missing
 
 ## 2. Làm quen với giao diện
 
-Cửa sổ chính gồm bốn khu vực:
+Cửa sổ chính được thiết kế theo bố cục của các trình đọc PDF chuyên nghiệp, gồm năm khu vực:
 
 ```
-┌───────────────────────────────────────────────────────────────┐
-│  Tệp   Sửa   Xem   OCR   Công cụ   Trợ giúp        ← Thanh menu │
-├───────────────────────────────────────────────────────────────┤
-│  [Mở tệp] [Mở thư mục] │ [Chạy OCR] [Chọn vùng] … ← Thanh công cụ│
-├─────────────────────────────────┬─────────────────────────────┤
-│                                 │                             │
-│   Ảnh trang gốc                 │   Văn bản nhận diện         │
-│   (phóng to, kéo thả, khung     │   (sửa trực tiếp,           │
-│    bố cục nhiều màu)            │    Undo/Redo, tô vàng        │
-│                                 │    chỗ nghi ngờ)            │
-│        ← Bộ so sánh lỗi →       │                             │
-├─────────────────────────────────┴──────────┬──────────────────┤
-│  Đã xong 12/40 · Lỗi 0 · Còn lại: 1 phút   │ Tùy chọn nhận diện│
-│  [▓▓▓▓▓░░░░░] [Tạm dừng] [Hủy]   ← Thanh   │  Mô hình OCR …    │
-│                                   trạng thái│  Thiết bị …       │
-└────────────────────────────────────────────┴──────────────────┘
+┌───────────────────────────────────────────────────────────────────────────────────┐
+│  Tệp   Sửa   Xem   OCR   Công cụ   Trợ giúp                        ← Thanh menu   │
+├───────────────────────────────────────────────────────────────────────────────────┤
+│  [Mở tệp] [Mở thư mục] │ [Chạy OCR] [Chọn vùng] …                  ← Thanh công cụ│
+├──────────────────┬─────────────────────────────┬──────────────────┬───────────────┤
+│ Điều hướng (Trái)│  Ảnh trang gốc              │ Văn bản nhận diện│ Tùy chọn (Phải│
+│ • Thông tin tệp  │  [Vừa trang][Vừa ngang][↺][↻]│ [◀ Từ nghi ngờ ▶]│ • Mô hình OCR │
+│   [OCR trang này]│  (phóng to, xoay trang,     │ [Sửa chính tả]   │ • Biến thể    │
+│ • [Trang] (✓/○)  │   khung bố cục nhiều màu)   │ (sửa trực tiếp,  │ • Thiết bị    │
+│ • [Mục lục PDF]  │                             │  tô vàng từ <80%,│ • Tiền xử lý  │
+│ • [Tìm kiếm]     │      ← Bộ so sánh lỗi song song →              │ • Hậu xử lý   │
+├──────────────────┴─────────────────────────────┴──────────────────┴───────────────┤
+│  Đã xong 12/40 · Lỗi 0 · Còn lại: 1 phút  [▓▓▓▓▓░░░░░] [Tạm dừng] [Hủy]          │
+└───────────────────────────────────────────────────────────────────────────────────┘
 ```
+
+### Khung Điều hướng bên trái (`NavigationDock`)
+
+- **Thẻ thông tin tài liệu:** Hiển thị tên tệp, tổng số trang, dung lượng tệp, tiến độ số trang đã OCR (`Đã OCR: X/Y trang`), cùng nút **OCR trang hiện tại** để chạy OCR nhanh riêng trang đang mở.
+- **Tab Trang:** Danh sách toàn bộ các trang kèm ảnh thu nhỏ và huy hiệu trạng thái trực quan (`✓ Đã OCR` màu xanh hoặc `○ Chưa OCR`).
+- **Tab Mục lục:** Cây mục lục (Bookmarks / Outline) trích xuất tự động từ tệp PDF; nhấp vào mục bất kỳ để nhảy thẳng tới trang tương ứng.
+- **Tab Tìm kiếm:** Tìm kiếm từ khóa xuyên suốt toàn bộ các trang của tài liệu (cả lớp chữ PDF gốc lẫn kết quả đã OCR) và nhảy đến trang chứa kết quả khi nhấp chọn.
 
 **Màu khung bố cục** trên ảnh cho biết loại khối:
 
@@ -104,34 +109,50 @@ Cửa sổ chính gồm bốn khu vực:
 
 1. **Mở tài liệu** — `Ctrl+O`, hoặc **kéo thả** tệp PDF/ảnh thẳng vào cửa sổ.
    Định dạng hỗ trợ: `.pdf`, `.png`, `.jpg`, `.jpeg`, `.tif`, `.tiff`, `.bmp`, `.webp`.
-2. **Chọn mô hình và thiết bị** ở dock *Tùy chọn nhận diện* bên phải ([Mục 4](#4-chọn-mô-hình-và-thiết-bị-chạy)).
-3. **Chạy OCR** — `F5`. Quá trình chạy nền: giao diện vẫn thao tác được, thanh trạng thái
-   hiển thị phần trăm và thời gian còn lại.
-4. **Soát lỗi** ở bộ so sánh song song ([Mục 6](#6-soát-lỗi-bằng-bộ-so-sánh-song-song)).
+2. **Chọn mô hình, biến thể và thiết bị** ở dock *Tùy chọn nhận diện* bên phải ([Mục 4](#4-chọn-mô-hình-và-thiết-bị-chạy)).
+3. **Chạy OCR** — nhấn `F5` để nhận diện toàn bộ tài liệu, hoặc bấm **OCR trang hiện tại** ở khung bên trái nếu chỉ cần xử lý trang đang xem.
+4. **Soát lỗi & sửa chính tả** ở bộ so sánh song song ([Mục 6](#6-soát-lỗi-bằng-bộ-so-sánh-song-song)).
 5. **Xuất tệp** — `Ctrl+S` ([Mục 10](#10-xuất-tài-liệu)).
 
 > **PDF đã có sẵn lớp text** (xuất từ Word, trình duyệt…) được đọc thẳng, **không cần OCR**:
-> nhanh dưới 1 giây mỗi trang và chính xác 100%. Ứng dụng tự nhận biết, bạn không phải làm gì.
+> nhanh dưới 1 giây mỗi trang và chính xác 100%. Nếu gặp tệp PDF có lớp chữ bị lỗi bảng mã
+> (font TCVN3/VNI cũ đọc ra ký tự lạ), hãy bật **Ép buộc OCR (bỏ qua lớp chữ gốc)** ở khung tùy chọn.
 
 ---
 
 ## 4. Chọn mô hình và thiết bị chạy
 
-Dock **Tùy chọn nhận diện** (bên phải cửa sổ):
+### 4.1. Bảy mô hình OCR & các biến thể chuyên dụng
+
+Ứng dụng tích hợp **7 mô hình OCR** và cho phép chọn **biến thể (variant)** tùy mục đích sử dụng ngay tại dock **Tùy chọn nhận diện**:
+
+| Mô hình | Biến thể & Tùy chọn nổi bật | Khi nào nên chọn |
+| :-- | :-- | :-- |
+| **VietOCR** | `vgg_transformer` (chính xác cao), `vgg_seq2seq` (nhanh, nhẹ), `resnet_transformer`, hoặc tệp `.pth` tùy chỉnh | Văn bản tiếng Việt chữ in, hành chính, pháp lý, sách báo |
+| **PaddleOCR** | • Phiên bản: `PP-OCRv6`, `PP-OCRv5`, `PP-OCRv4`, `PP-OCRv3`<br>• Chế độ: `ocr` (tiêu chuẩn), `pp_structure_v3` (bố cục & bảng biểu), `paddleocr_vl` (VLM 0.9B cho bảng/công thức phức tạp)<br>• Hạng mô hình: `mobile` (nhanh), `server` (chính xác cao), `tiny`<br>• Ngôn ngữ: `vi`, `en`, `latin`, `ch`, `japan`, `korean`, `fr`, `german` | Tài liệu nhiều bảng biểu, hóa đơn, báo cáo tài chính, tài liệu đa ngôn ngữ |
+| **Surya OCR** | Nhận diện dòng đa ngôn ngữ (90+ ngôn ngữ) kèm phân tích thứ tự đọc | Sách, tạp chí nhiều cột, tài liệu học thuật song ngữ |
+| **TrOCR** | • Chữ viết tay: `trocr-base-handwritten`, `trocr-small-handwritten`, `trocr-large-handwritten`<br>• Chữ in: `trocr-base-printed`, `trocr-small-printed`, `trocr-large-printed`<br>• Chữ ngoại cảnh: `trocr-base-str`, `trocr-large-str` | Ghi chú viết tay, mẫu đơn điền tay, ảnh chụp biển hiệu |
+| **EasyOCR** | • Mạng nhận diện: `latin_g2`, `english_g2`, `latin_g1`, hoặc `.pth` tùy chỉnh<br>• Mạng phát hiện: `craft` (chính xác), `dbnet18` (nhanh) | Dự phòng đa ngôn ngữ gọn nhẹ trên CPU |
+| **Chandra OCR** | • Biến thể: `datalab-to/chandra` (v1), `datalab-to/chandra-ocr-2` (5B flagship)<br>• Chế độ prompt: `ocr_layout` (giữ bố cục/bảng/toán), `ocr` (văn bản thuần)<br>• Backend: `hf` (cục bộ) hoặc `vllm` | Tài liệu phức tạp có công thức toán học, bảng biểu lồng nhau, biểu mẫu |
+| **dots.ocr** | • Biến thể: `rednote-hilab/dots.ocr` (1.7B VLM), `rednote-hilab/dots.mocr` (1.5 đa phương thức), `dots-studio/dots.ocr`<br>• Chế độ: `layout_all` (bố cục + bảng + chữ), `ocr` | Phân tích tài liệu thông minh bằng Vision-Language Model gọn nhẹ |
+
+> **Nhập model tùy chỉnh của riêng bạn:** Trong ô chọn biến thể của bất kỳ mô hình nào, bạn có thể chọn **`+ Chọn tệp/thư mục model tùy chỉnh…`** (hoặc vào **Công cụ → Cài đặt**) để nạp trực tiếp tệp trọng số `.pth`, `.pdparams` hay thư mục checkpoint HuggingFace/Paddle đã huấn luyện riêng.
+
+### 4.2. Các tùy chọn xử lý trên Dock phải
 
 | Mục | Ý nghĩa | Gợi ý |
 | :-- | :-- | :-- |
-| **Mô hình OCR** | Bộ nhận diện sẽ dùng | `VietOCR` cho văn bản tiếng Việt; `TrOCR` cho chữ viết tay; `PaddleOCR` khi tài liệu nhiều bảng |
-| **Thiết bị** | CPU hay GPU | Để `Tự động phát hiện` |
+| **Thiết bị** | CPU hay GPU (`CUDA`) | Để `Tự động phát hiện` |
 | **Độ phân giải** | DPI khi dựng ảnh từ PDF | 300 DPI là mặc định tốt; 400–600 cho chữ rất nhỏ |
-| **Tiền xử lý ảnh** | Bật/tắt từng bộ lọc | Giữ bật tất cả, trừ khi ảnh đã sạch sẵn |
-| **Nhận diện bảng biểu** | Dựng lưới hàng/cột từ bảng | Cần `PaddleOCR`; có thể sửa bảng trước khi xuất |
-| **Thứ tự đọc nhiều cột** | Đọc lần lượt từng cột | Giữ bật để tránh ghép chữ xuyên cột |
+| **Tiền xử lý ảnh** | Tự xoay hướng, làm thẳng nghiêng, cắt viền, tăng tương phản | Giữ bật tất cả, trừ khi ảnh đã sạch sẵn |
+| **Nhận diện bảng biểu** | Dựng lưới hàng/cột từ bảng | Kết hợp tốt nhất với `PaddleOCR` / `Chandra` / `dots.ocr` |
+| **Thứ tự đọc nhiều cột** | Phân tích chiếu XY-Cut & sắp xếp đọc lần lượt từng cột | Giữ bật để tránh ghép chữ xuyên cột |
 | **Gộp dòng thành đoạn** | Nối các dòng cùng đoạn | Tắt nếu cần giữ riêng từng dòng OCR |
+| **Ép buộc OCR** | Bỏ qua lớp chữ có sẵn của PDF, bắt buộc quét ảnh | Bật khi PDF có lớp chữ bị lỗi font/bảng mã |
+| **Sửa lỗi chính tả & dấu tiếng Việt (N-gram)** | Tự động sửa dấu thanh/mũ nguyên âm bị nhầm theo ngữ cảnh cụm từ 1/2/3-gram | Giữ bật cho tài liệu tiếng Việt để tự sửa các lỗi như `đưạc` → `được`, `tổ chửc` → `tổ chức`, `nhan vien` → `nhân viên` |
 
 Kết quả có nhãn tiêu đề cấp 1–3 khi cỡ chữ/chiều cao dòng nổi bật rõ so với văn bản thường;
-nhãn chú thích được nhận diện theo tiền tố như `Hình 1` hoặc `Table 2`. Nếu trang không có
-bằng chứng rõ về kiểu chữ, khối vẫn được giữ là đoạn văn thay vì đoán cấp tiêu đề.
+nhãn chú thích được nhận diện theo tiền tố như `Hình 1` hoặc `Table 2`.
 
 Bốn bộ lọc tiền xử lý chạy theo thứ tự: **tự xoay đúng hướng → làm thẳng ảnh nghiêng →
 cắt viền thừa → tăng cường chất lượng ảnh**.
@@ -145,12 +166,12 @@ nhưng kết quả không đổi. Chế độ `Tự động` chọn GPU khi có 
 
 ---
 
-## 5. Lưu mô hình vào ổ cứng ngoài
+## 5. Lưu mô hình vào ổ cứng ngoài & Nhập model riêng
 
 Các mô hình OCR nặng vài GB. Mặc định chúng nằm trong thư mục ứng dụng
 (`src/models/`), **không bao giờ** ghi vào `C:\Users\...\.cache` làm đầy ổ hệ thống.
 
-Để chuyển sang ổ ngoài:
+Để chuyển sang ổ ngoài hoặc nhập model riêng:
 
 1. **Công cụ → Cài đặt** (`Ctrl+,`).
 2. Ở mục **Thư mục mô hình & weights**, bấm **Duyệt…** và chọn thư mục trên ổ ngoài,
@@ -158,7 +179,8 @@ Các mô hình OCR nặng vài GB. Mặc định chúng nằm trong thư mục �
 3. Đọc dòng **Dung lượng trống** ngay bên dưới để chắc chắn ổ đủ chỗ.
 4. Nếu đã tải mô hình từ trước, bấm **Di chuyển weights sang thư mục mới**. Thanh tiến trình
    hiển thị tiến độ sao chép.
-5. Bấm **OK**.
+5. Nếu bạn có sẵn tệp trọng số `.pth` hoặc thư mục model tự huấn luyện, dùng nút **+ Nhập tệp model (.pth)…** hoặc **+ Nhập thư mục model…** để sao chép vào kho mô hình của ứng dụng.
+6. Bấm **OK**.
 
 > **An toàn dữ liệu:** thao tác di chuyển **sao chép trước, xóa sau**. Nếu bạn hủy giữa chừng
 > hoặc rút nhầm ổ cứng, mô hình gốc vẫn còn nguyên. Ứng dụng cũng từ chối những đường dẫn
@@ -171,16 +193,19 @@ Sau khi đổi, các biến môi trường cache của PyTorch, HuggingFace, Pad
 
 ## 6. Soát lỗi bằng bộ so sánh song song
 
-Đây là phần giúp bạn sửa nhanh nhất.
+Bộ so sánh lỗi song song kết hợp công cụ xem PDF chuyên nghiệp ở bên trái và trình biên tập văn bản ở bên phải:
 
 - **Từ văn bản sang ảnh:** đặt con trỏ vào một đoạn ở khung phải → khung trái tự cuộn đến
   đúng khối tương ứng và tô viền đỏ.
 - **Từ ảnh sang văn bản:** bấm vào một khung bố cục ở khung trái → con trỏ nhảy tới đoạn đó.
-- **Tô vàng:** những từ mô hình không chắc chắn (độ tin cậy dưới 80%) có nền vàng nhạt.
-  Hãy đọc kỹ những chỗ này trước tiên.
+- **Điều khiển trang & hiển thị ảnh (thanh điều hướng 2 hàng chuẩn HiDPI):**
+  - **Vừa trang** (`Ctrl+0`): thu phóng để thấy trọn vẹn cả trang.
+  - **Vừa ngang**: thu phóng vừa khít chiều ngang khung nhìn để đọc chữ rõ nhất.
+  - **Xoay trang 90° (`↺` / `↻`)**: xoay nhanh trang bị quét ngược hoặc nằm ngang.
+  - **Cuộn chuột chuyển trang & thu phóng:** lăn chuột khi đang ở đầu/cuối trang sẽ tự động chuyển sang trang trước/sau; giữ **`Ctrl + Lăn chuột`** (hoặc `Ctrl` `+` / `Ctrl` `-`) để phóng to/thu nhỏ ảnh tại vị trí con trỏ.
+- **Duyệt nhanh từ nghi ngờ (`◀ Từ nghi ngờ` / `Từ nghi ngờ ▶`):** những từ mô hình không chắc chắn (độ tin cậy dưới 80%) được tô nền vàng nhạt kèm bộ đếm số lượng từ nghi ngờ. Bấm hai nút này để nhảy lần lượt qua từng từ cần kiểm tra mà không sợ bỏ sót.
+- **Nút `Sửa chính tả` 1 chạm:** bấm nút **Sửa chính tả** ngay trên thanh công cụ của bộ so sánh để chạy bộ sửa lỗi chính tả & dấu tiếng Việt theo ngữ cảnh N-gram trên toàn bộ nội dung văn bản đang mở (hỗ trợ hoàn tác bằng `Ctrl+Z`).
 - **Sửa trực tiếp:** gõ thẳng vào khung phải. `Ctrl+Z` hoàn tác, `Ctrl+Y` làm lại.
-- **Phóng to ảnh:** lăn chuột trên ảnh, hoặc `Ctrl` `+` / `Ctrl` `-`; `Ctrl+0` để vừa khung.
-  Kéo thả chuột để di chuyển ảnh.
 
 ### Sửa hàng loạt một lỗi lặp lại
 
@@ -201,7 +226,7 @@ Tùy chọn **Phân biệt hoa thường** và **Đúng toàn bộ từ** giúp 
 
 Khi bạn chỉ cần một đoạn hoặc một bảng trong trang:
 
-1. Bấm **Chọn vùng OCR** trên thanh công cụ, hoặc `Ctrl+R`.
+1. Bấm **Chọn vùng OCR** trên thanh công cụ, hoặc `Ctrl+R` (nút trên thanh công cụ sẽ sáng nổi bật khi chế độ chọn vùng đang bật).
 2. Kéo chuột vẽ hình chữ nhật trên ảnh. Vùng chọn hiện nét đứt màu đỏ.
 3. Kết quả của riêng vùng đó hiển thị ngay dưới khung văn bản.
 4. Bấm `Ctrl+R` lần nữa để tắt chế độ vẽ và quay lại kéo thả ảnh như thường.
@@ -267,33 +292,35 @@ lượng hoặc mất quyền ghi giữa chừng, tệp cũ của bạn vẫn ng
 
 ---
 
-## 11. Giao diện và ngôn ngữ
+## 11. Giao diện, HiDPI và ngôn ngữ
 
 **Công cụ → Cài đặt → Giao diện**:
 
 - **Chủ đề:** `Theo hệ thống` / `Sáng` / `Tối`. Đổi là áp dụng ngay, không cần khởi động lại.
 - **Ngôn ngữ:** `Tiếng Việt` / `English`. Cũng áp dụng ngay.
+- **Tương thích màn hình phân giải cao (HiDPI):** Ứng dụng tự động nhận diện tỷ lệ phóng đại của màn hình (125%, 150%, 175%, 200%, 4K) với chính sách `PassThrough` của Qt 6, dựng biểu tượng thanh công cụ đa độ phân giải (`@1x` / `@2x`) sắc nét và tự động co giãn chiều cao nút bấm, hộp chọn mà không bị cắt chữ.
 
-Cả hai lựa chọn được ghi nhớ cho lần mở sau.
+Cả chủ đề và ngôn ngữ đều được ghi nhớ cho lần mở sau.
 
 ---
 
-## 12. Bảng phím tắt
+## 12. Bảng phím tắt & Thao tác chuột
 
-| Phím tắt | Chức năng |
+| Phím tắt / Thao tác | Chức năng |
 | :-- | :-- |
 | `Ctrl+O` | Mở tệp |
 | `Ctrl+Shift+O` | Mở thư mục |
 | `Ctrl+S` | Xuất tài liệu |
 | `Ctrl+Q` | Thoát |
-| `F5` | Chạy OCR |
+| `F5` | Chạy OCR toàn tài liệu |
 | `Ctrl+R` | Bật/tắt chế độ chọn vùng OCR |
 | `Ctrl+H` | Tìm và thay thế |
-| `Ctrl+Z` | Hoàn tác |
-| `Ctrl+Y` | Làm lại |
-| `Ctrl` `+` | Phóng to |
-| `Ctrl` `-` | Thu nhỏ |
-| `Ctrl+0` | Vừa khung cửa sổ |
+| `Ctrl+Z` / `Ctrl+Y` | Hoàn tác / Làm lại |
+| `Ctrl` `+` / `Ctrl` `-` | Phóng to / Thu nhỏ |
+| `Ctrl + Lăn chuột` | Phóng to / Thu nhỏ mượt tại vị trí con trỏ |
+| `Lăn chuột` | Cuộn trang hiện tại; tự chuyển sang trang trước/sau khi chạm biên đầu/cuối |
+| `Ctrl+0` | Vừa khung cửa sổ (Vừa trang) |
+| `PgUp` / `PgDn` | Chuyển trang trước / trang sau |
 | `Ctrl+,` | Mở Cài đặt |
 
 Menu **Tệp → Tệp gần đây** lưu 10 tài liệu mở gần nhất.
@@ -312,17 +339,18 @@ Vị trí cửa sổ và cách bố trí các dock được ghi nhớ giữa cá
 
 **Về lựa chọn trong ứng dụng**
 
-- PDF đã có lớp text: cứ mở bình thường, đừng ép chạy OCR — kết quả trích xuất trực tiếp
-  luôn chính xác hơn.
+- PDF đã có lớp text: cứ mở bình thường, đừng ép chạy OCR — trừ khi lớp chữ gốc của PDF bị lỗi font/bảng mã thì mới bật **Ép buộc OCR**.
 - Chữ rất nhỏ hoặc dấu bị dính: nâng **Độ phân giải** lên 400–600 DPI.
-- Tài liệu nhiều bảng: chọn **PaddleOCR**.
-- Chữ viết tay: chọn **TrOCR**.
+- Văn bản tiếng Việt hành chính/sách báo: chọn **VietOCR** (`vgg_transformer`) và bật **Sửa lỗi chính tả & dấu tiếng Việt (N-gram)**.
+- Tài liệu nhiều bảng biểu: chọn **PaddleOCR** (chế độ `pp_structure_v3` hoặc `paddleocr_vl`), **Chandra OCR** (`chandra-ocr-2`) hoặc **dots.ocr**.
+- Chữ viết tay: chọn **TrOCR** (`trocr-base-handwritten` hoặc `trocr-large-handwritten`).
 - Ảnh đã được xử lý sạch từ trước: **tắt** các bộ lọc tiền xử lý để tránh xử lý chồng.
-- Chỉ cần một đoạn nhỏ: dùng **chọn vùng** (`Ctrl+R`) — nhanh hơn và ít nhiễu hơn.
+- Chỉ cần một đoạn nhỏ: dùng **chọn vùng** (`Ctrl+R`) hoặc **OCR trang hiện tại** — nhanh hơn và ít nhiễu hơn.
 
 **Về khâu soát lỗi**
 
-- Luôn xem trước các từ **tô vàng**.
+- Dùng nút **`◀ Từ nghi ngờ` / `Từ nghi ngờ ▶`** để duyệt nhanh qua các từ tô vàng.
+- Bấm **`Sửa chính tả`** trên thanh công cụ so sánh để tự động khôi phục dấu tiếng Việt theo ngữ cảnh cụm từ (số, email, số điện thoại và tên riêng viết hoa được bảo vệ tự động).
 - Gặp lỗi lặp lại, dùng `Ctrl+H` **Thay tất cả** thay vì sửa thủ công từng chỗ.
 
 ---
@@ -337,9 +365,10 @@ Vị trí cửa sổ và cách bố trí các dock được ghi nhớ giữa cá
 | *"Không thể tải mô hình. Vui lòng kiểm tra kết nối mạng…"* | Mất mạng khi tải lần đầu | Kiểm tra mạng; ứng dụng đã tự thử lại 3 lần |
 | *"Tệp tải về không đạt kiểm tra toàn vẹn SHA256."* | Tải bị hỏng giữa chừng | Tải lại; tệp hỏng đã tự bị xóa, không lưu vào máy |
 | *"Không phát hiện GPU CUDA…"* | Máy không có card NVIDIA, hoặc thiếu driver | Dùng CPU, hoặc cài lại driver CUDA |
-| Chạy OCR rất chậm | Đang chạy bằng CPU, hoặc DPI quá cao | Hạ DPI về 300; bật GPU nếu có |
-| Kết quả sai nhiều dấu | Ảnh mờ hoặc độ phân giải thấp | Scan lại ở 300+ DPI; xem [Mục 13](#13-mẹo-tăng-độ-chính-xác) |
-| Chữ cột 1 bị nối sang cột 2 | Khoảng cách cột trong bản gốc quá hẹp | Dùng **chọn vùng** để nhận diện từng cột riêng |
+| PDF mở ra hiện ký tự lạ (lỗi font TCVN3/VNI) | Lớp chữ gốc của PDF dùng bảng mã cũ | Tích chọn **Ép buộc OCR (bỏ qua lớp chữ gốc)** rồi nhấn `F5` |
+| Chạy OCR rất chậm | Đang chạy bằng CPU, hoặc DPI quá cao | Hạ DPI về 300; chọn biến thể `mobile` / `vgg_seq2seq`; bật GPU nếu có |
+| Kết quả sai nhiều dấu tiếng Việt | Ảnh mờ hoặc chưa bật sửa chính tả ngữ cảnh | Bật **Sửa lỗi chính tả & dấu tiếng Việt (N-gram)** hoặc bấm nút **Sửa chính tả** |
+| Chữ cột 1 bị nối sang cột 2 | Khoảng cách cột trong bản gốc quá hẹp | Bật **Thứ tự đọc nhiều cột** hoặc dùng **chọn vùng** (`Ctrl+R`) |
 
 Thông báo lỗi hiện ở góc dưới bên phải dưới dạng thẻ màu. Thẻ **lỗi (đỏ)** ở lại đến khi bạn
 đóng; thẻ thành công và thông tin tự ẩn sau vài giây. Nhật ký chi tiết dành cho kỹ thuật viên

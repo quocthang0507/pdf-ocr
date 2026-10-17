@@ -79,6 +79,10 @@ def test_comparison_dock_fit_width_rotation_and_uncertain_word_navigation(
     dock.fit_width_btn.click()
     assert dock.canvas.zoom_factor() > 0
 
+    dock.editor.setPlainText("Đội nhóm gổm 20 nhan vien cấp dưởi.")
+    dock.spell_fix_btn.click()
+    assert dock.editor.toPlainText() == "Đội nhóm gồm 20 nhân viên cấp dưới."
+
 
 def test_navigation_dock_and_main_window_integration(qtbot, tmp_path: Path) -> None:
     store = QSettings(str(tmp_path / "nav_session.ini"), QSettings.Format.IniFormat)
@@ -103,9 +107,12 @@ def test_navigation_dock_and_main_window_integration(qtbot, tmp_path: Path) -> N
     assert window.document_session.page_rotation(1) == 90
 
 
-def test_hidpi_controls_and_multi_scale_icons(qtbot, monkeypatch: pytest.MonkeyPatch) -> None:
-    from PySide6.QtCore import QSize, Qt
+def test_hidpi_controls_and_multi_scale_icons(
+    qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtCore import Qt
     from PySide6.QtGui import QColor, QPainter
+
     from src import main as entrypoint
     from src.gui.components.status_bar import BatchStatusBar
     from src.gui.components.tool_bar import ICON_SIZE
@@ -146,4 +153,3 @@ def test_hidpi_controls_and_multi_scale_icons(qtbot, monkeypatch: pytest.MonkeyP
     )
     entrypoint._configure_high_dpi()
     assert policies == [Qt.HighDpiScaleFactorRoundingPolicy.PassThrough]
-

@@ -605,6 +605,7 @@ QPushButton#zoom_reset_button,
 QPushButton#fit_width_button,
 QPushButton#uncertain_prev_button,
 QPushButton#uncertain_next_button,
+QPushButton#spell_fix_button,
 QPushButton#edit_table_button {
     min-height: 20px;
     padding: 4px 10px;

@@ -2,6 +2,8 @@ import re
 from collections.abc import Sequence
 from statistics import median
 
+import numpy as np
+
 from src.constants import BlockType
 from src.core.models import BoundingBox, OCRBlock, OCRPage
 
@@ -317,3 +319,67 @@ class LayoutAnalyzer:
     def _fallback_key(item: tuple[int, OCRBlock]) -> tuple[float, float, int]:
         index, block = item
         return block.bbox.y1, block.bbox.x1, index
+
+
+def projection_by_bboxes(boxes: np.ndarray, axis: int) -> np.ndarray:
+    """Compute a 1D per-pixel projection histogram along `axis` (0=x, 1=y)."""
+    if axis not in (0, 1):
+        raise ValueError("axis phải là 0 (ngang) hoặc 1 (dọc).")
+    if boxes.size == 0:
+        return np.zeros(0, dtype=int)
+    coords = np.asarray(boxes[:, axis::2], dtype=int)
+    length = int(np.max(coords))
+    if length <= 0:
+        return np.zeros(0, dtype=int)
+    hist = np.zeros(length, dtype=int)
+    for start, end in coords:
+        s = max(0, int(start))
+        e = max(s, int(end))
+        hist[s:e] += 1
+    return hist
+
+
+def split_projection_profile(
+    arr_values: np.ndarray, min_value: float = 0.0, min_gap: float = 1.0
+) -> tuple[np.ndarray, np.ndarray] | None:
+    """Split a 1D projection profile into contiguous non-empty intervals."""
+    arr_index = np.where(arr_values > min_value)[0]
+    if len(arr_index) == 0:
+        return None
+    arr_diff = arr_index[1:] - arr_index[:-1]
+    arr_diff_index = np.where(arr_diff > min_gap)[0]
+    zero_start = arr_index[arr_diff_index]
+    zero_end = arr_index[arr_diff_index + 1]
+    starts = np.insert(zero_end, 0, arr_index[0])
+    ends = np.append(zero_start, arr_index[-1]) + 1
+    return starts, ends
+
+
+def merge_overlapping_boxes(boxes: Sequence[BoundingBox]) -> list[BoundingBox]:
+    """Consolidate overlapping bounding boxes into unified region envelopes."""
+    remaining = list(boxes)
+    merged: list[BoundingBox] = []
+    while remaining:
+        current = remaining.pop(0)
+        overlaps = [
+            idx
+            for idx, candidate in enumerate(remaining)
+            if not (
+                current.x2 < candidate.x1
+                or current.x1 > candidate.x2
+                or current.y2 < candidate.y1
+                or current.y1 > candidate.y2
+            )
+        ]
+        if overlaps:
+            group = [current]
+            for offset, idx in enumerate(overlaps):
+                group.append(remaining.pop(idx - offset))
+            current = BoundingBox(
+                min(b.x1 for b in group),
+                min(b.y1 for b in group),
+                max(b.x2 for b in group),
+                max(b.y2 for b in group),
+            )
+        merged.append(current)
+    return merged

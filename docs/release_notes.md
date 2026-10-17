@@ -1,5 +1,47 @@
 # Ghi Chú Phát Hành
 
+## v0.2.0 — Nâng cấp Trình đọc PDF Chuyên nghiệp, 7 Mô hình OCR Đa Biến Thể, Sửa Chính Tả Tiếng Việt N-gram & HiDPI
+
+### Điểm nổi bật
+
+**1. Mở rộng lên 7 Mô hình OCR kèm đầy đủ Biến thể & Trọng số tùy chỉnh**
+- **PaddleOCR nâng cấp toàn diện:** hỗ trợ chọn phiên bản `PP-OCRv6`, `PP-OCRv5`, `PP-OCRv4`, `PP-OCRv3`; chế độ pipeline `ocr` (tiêu chuẩn), `pp_structure_v3` (phân tích bố cục & bảng biểu nâng cao), và `paddleocr_vl` (Vision-Language 0.9B cho bảng/công thức phức tạp); hạng mô hình `mobile` / `server` / `tiny`; và 8 ngôn ngữ (`vi`, `en`, `latin`, `ch`, `japan`, `korean`, `fr`, `german`).
+- **Tích hợp Chandra OCR & dots.ocr:** bổ sung `ChandraOCREngine` (`datalab-to/chandra` v1, `datalab-to/chandra-ocr-2` 5B flagship, chế độ `ocr_layout` / `ocr`, backend `hf` / `vllm`) và `DotsOCREngine` (`rednote-hilab/dots.ocr` 1.7B, `rednote-hilab/dots.mocr` 1.5, `dots-studio/dots.ocr`).
+- **Đa biến thể cho VietOCR, TrOCR & EasyOCR:** chọn trực tiếp `vgg_transformer` / `vgg_seq2seq` / `resnet_transformer` (VietOCR); `small` / `base` / `large` cho Handwritten, Printed và Scene Text `str` (TrOCR); mạng nhận diện `latin_g2` / `english_g2` / `latin_g1` và mạng phát hiện `craft` / `dbnet18` (EasyOCR).
+- **Nhập model tùy chỉnh linh hoạt:** nạp trực tiếp tệp trọng số `.pth`, `.pdparams` hoặc thư mục checkpoint từ hộp thoại Cài đặt hoặc ngay trong ô chọn biến thể của từng engine.
+
+**2. Không gian đọc PDF & Soát lỗi OCR chuyên nghiệp**
+- **Khung Điều hướng bên trái (`NavigationDock`):** thẻ thông tin tài liệu (tên tệp, số trang, dung lượng, bộ đếm `Đã OCR: X/Y trang`, nút **OCR trang hiện tại**), cùng 3 tab: **Trang** (kèm huy hiệu `✓ Đã OCR` / `○ Chưa OCR`), **Mục lục** (cây Bookmarks/Outline của PDF) và **Tìm kiếm** toàn văn xuyên suốt các trang.
+- **Điều khiển trang & hiển thị nâng cao:** nút **Vừa trang**, **Vừa ngang** (`fit_width`), xoay trang 90° (`↺` / `↻`), lăn chuột tự chuyển trang khi chạm biên đầu/cuối và `Ctrl + Lăn chuột` để thu phóng tại con trỏ.
+- **Điều hướng từ nghi ngờ & Ép buộc OCR:** nút **`◀ Từ nghi ngờ` / `Từ nghi ngờ ▶`** giúp nhảy qua từng từ có độ tin cậy thấp (`< 80%`); tùy chọn **Ép buộc OCR (`force_ocr`)** cho phép bỏ qua lớp chữ gốc bị lỗi font/bảng mã của PDF.
+
+**3. Sửa lỗi chính tả & dấu tiếng Việt theo ngữ cảnh N-gram (`VietnameseSpellCorrector`)**
+- Xây dựng bộ sửa lỗi chính tả tiếng Việt hậu OCR (`src/core/spell_corrector.py`) kết hợp ngữ cảnh cụm từ 1/2/3-gram và từ điển âm tiết tiếng Việt (tự động tích hợp `SymSpell` nếu có).
+- Khắc phục chính xác các lỗi nhầm dấu thanh và mũ nguyên âm phổ biến (`đưạc` → `được`, `cấp dưởi` → `cấp dưới`, `gổm` → `gồm`, `tổ chửc` → `tổ chức`, `không ngửng đổi mởi` → `không ngừng đổi mới`, `nhan vien` → `nhân viên`, `thuong hiệu tiếp can` → `thương hiệu tiếp cận`, `rộng hon` → `rộng hơn`).
+- Tự động nhận diện và **bảo vệ** từ hợp lệ: số, phần trăm, ngày tháng, email, số điện thoại Việt Nam và tên riêng viết hoa (`Np`).
+- Bổ sung thuật toán chiếu ngang/dọc (`projection_by_bboxes`, `split_projection_profile`, `merge_overlapping_boxes`) trong `src/core/layout_analyzer.py` giúp tách dòng/cột sạch hơn trước khi nhận diện.
+- Có thể bật tự động trong pipeline hoặc bấm nút **`Sửa chính tả`** 1 chạm trên thanh công cụ so sánh (hỗ trợ `Ctrl+Z`).
+
+**4. Tương thích hoàn hảo màn hình HiDPI (125%, 150%, 200%, 4K)**
+- Kích hoạt `HighDpiScaleFactorRoundingPolicy.PassThrough` trước khi khởi tạo `QApplication`.
+- Dựng biểu tượng thanh công cụ đa độ phân giải (`1x` và `2x` `devicePixelRatio`) sắc nét trên màn hình Retina/4K.
+- Loại bỏ các giới hạn kích thước cứng gây cắt chữ tiếng Việt ở tỷ lệ phóng đại cao; chia thanh điều hướng ảnh thành 2 hàng gọn gàng kèm khoảng đệm an toàn ở mọi góc cửa sổ.
+
+### Chất lượng mã nguồn (v0.2.0)
+
+| Chỉ số | Kết quả |
+| :-- | :-- |
+| Kiểm thử | 600+ xanh (unit, integration, gui) |
+| Độ phủ | ~90% (ngưỡng 80%) |
+| `ruff`, `black`, `isort` | 0 lỗi |
+| `mypy --strict` | 0 lỗi trên 71 tệp |
+| `bandit` | 0 cảnh báo |
+| Hàm dài nhất | ≤ 50 dòng (giới hạn 50) |
+| Tệp dài nhất | ≤ 800 dòng (giới hạn 800) |
+| `print()` trong `src/` | 0 |
+
+---
+
 ## v0.1.0 — Bản hoàn chỉnh đầu tiên
 
 Hoàn tất toàn bộ 8 giai đoạn của [kế hoạch triển khai](implementation_plan.md): từ nền tảng
@@ -59,7 +101,7 @@ vào thư mục hệ thống ẩn.
 > SC-3 và SC-4 là tiêu chí về chất lượng mô hình, phải đo bằng model weights thật trên tập dữ
 > liệu có nhãn. Toàn bộ đường đi của dữ liệu đã được kiểm thử; phần còn lại là chạy benchmark.
 
-### Chất lượng mã nguồn
+### Chất lượng mã nguồn (v0.1.0)
 
 | Chỉ số | Kết quả |
 | :-- | :-- |

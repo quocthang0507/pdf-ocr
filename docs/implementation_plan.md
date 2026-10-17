@@ -260,19 +260,23 @@ flowchart TD
    - Sử dụng mô hình nhận diện bảng (PP-Structure Table Rec / Surya Table) để tách cấu trúc dòng (rows), cột (columns), ô gộp (merged cells/spans).
    - Ánh xạ trực tiếp tọa độ text vào ma trận ô 2D để chuẩn bị xuất sang định dạng bảng tính.
 
-### 3.5. Module OCR Đa Mô Hình (Modular OCR Engine System)
-| Mô Hình | Điểm Mạnh Nổi Bật | Trường Hợp Sử Dụng Tối Ưu | Tham Số Cấu Hình Đầu Vào Tùy Chọn |
+### 3.5. Module OCR Đa Mô Hình & Đa Biến Thể (Modular OCR Engine System)
+| Mô Hình | Điểm Mạnh Nổi Bật | Trường Hợp Sử Dụng Tối Ưu | Biến Thể & Tham Số Cấu Hình Đầu Vào |
 | :--- | :--- | :--- | :--- |
-| **VietOCR** | Chuyên sâu tiếng Việt (VGG-Transformer / CRNN), độ chính xác dấu thanh và âm điệu đạt >97%. | Tài liệu tiếng Việt chữ in, văn bản pháp lý, hành chính. | `model_name` (vgg_transformer, vgg_seq2seq), `device` (cpu/cuda), `beam_width`. |
-| **PaddleOCR** | Tốc độ cực nhanh, hỗ trợ đầy đủ nhận diện bố cục và cấu trúc bảng (PP-StructureV2/V4). | Tài liệu nhiều bảng biểu, hóa đơn, báo cáo tài chính. | `det_db_thresh`, `det_db_box_thresh`, `use_angle_cls`, `lang` (vi, en, ch...), `rec_batch_num`. |
+| **VietOCR** | Chuyên sâu tiếng Việt (VGG-Transformer / Seq2Seq / ResNet), độ chính xác dấu thanh và âm điệu >97%. | Tài liệu tiếng Việt chữ in, văn bản pháp lý, hành chính. | `model_name` (`vgg_transformer`, `vgg_seq2seq`, `resnet_transformer`), `custom_weights_path` (`.pth`), `device`, `beam_width`. |
+| **PaddleOCR** | Tốc độ cực nhanh, hỗ trợ đầy đủ nhận diện bố cục, bảng biểu và Vision-Language (`PP-StructureV3`, `PaddleOCR-VL` 0.9B). | Tài liệu nhiều bảng biểu, hóa đơn, báo cáo tài chính, tài liệu đa ngôn ngữ. | `ocr_version` (`PP-OCRv6`/`v5`/`v4`/`v3`), `pipeline_mode` (`ocr`/`pp_structure_v3`/`paddleocr_vl`), `model_tier` (`mobile`/`server`/`tiny`), `lang` (`vi`, `en`, `latin`, `ch`, `japan`, `korean`, `fr`, `german`), `custom_model_dir`. |
 | **Surya OCR** | Nhận diện dòng text và thứ tự đọc cực kỳ chính xác trên tài liệu phức tạp, 90+ ngôn ngữ. | Sách, tạp chí học thuật nhiều cột, văn bản song ngữ. | `langs`, `batch_size`, `detect_boxes`, `reading_order`. |
-| **Transformer OCR (TrOCR)** | Kiến trúc Vision-Encoder-Decoder (BEiT + RoBERTa), hiểu ngữ cảnh sâu. | **Nhận diện chữ viết tay (Handwritten)**, ghi chú, đơn điền tay. | `model_checkpoint` (handwritten/printed), `max_length`, `device`. |
-| **EasyOCR** | Gọn nhẹ, dựa trên PyTorch, hỗ trợ đa ngôn ngữ nhanh chóng không cần cấu hình phức tạp. | Dự phòng (fallback), xử lý nhanh trên môi trường CPU. | `languages`, `gpu` (bool), `quantize`, `contrast_ths`, `adjust_contrast`. |
+| **Transformer OCR (TrOCR)** | Kiến trúc Vision-Encoder-Decoder (BEiT + RoBERTa), hiểu ngữ cảnh sâu. | **Nhận diện chữ viết tay (Handwritten)**, chữ in và chữ ngoại cảnh (`str`). | `model_checkpoint` (`trocr-small/base/large-handwritten`, `trocr-small/base/large-printed`, `trocr-base/large-str`, hoặc thư mục cục bộ), `max_length`, `device`. |
+| **EasyOCR** | Gọn nhẹ, dựa trên PyTorch, hỗ trợ đa ngôn ngữ nhanh chóng không cần cấu hình phức tạp. | Dự phòng (fallback), xử lý nhanh trên môi trường CPU. | `recog_network` (`latin_g2`, `english_g2`, `latin_g1`, `.pth` riêng), `detect_network` (`craft`, `dbnet18`), `languages`, `gpu`, `contrast_ths`. |
+| **Chandra OCR** | Mô hình Vision-Language chuyên dụng cho tài liệu có bố cục phức tạp, bảng biểu và công thức toán học. | Tài liệu khoa học, biểu mẫu phức tạp, bảng biểu lồng nhau. | `model_checkpoint` (`datalab-to/chandra`, `datalab-to/chandra-ocr-2` 5B), `prompt_type` (`ocr_layout`, `ocr`), `method` (`hf`, `vllm`), `max_output_tokens`. |
+| **dots.ocr** | Mô hình Vision-Language đa phương thức gọn nhẹ (1.7B), nhận diện đồng thời bố cục, bảng biểu và chữ. | Tài liệu hỗn hợp cần phân tích bố cục thông minh với VRAM vừa phải. | `model_path` (`rednote-hilab/dots.ocr`, `rednote-hilab/dots.mocr`, `dots-studio/dots.ocr`), `prompt_mode` (`layout_all`, `ocr`), `method` (`hf`, `vllm`). |
 
-### 3.6. Module Hậu Xử Lý Tiếng Việt (Post-Processing & Diacritic Normalization)
+### 3.6. Module Hậu Xử Lý & Sửa Chính Tả Tiếng Việt Theo Ngữ Cảnh N-gram (Post-Processing & Contextual Spell Correction)
 1. **Chuẩn hóa Unicode tiếng Việt:** Chuyển đổi toàn bộ văn bản về chuẩn Unicode dựng sẵn (NFC), đồng nhất vị trí đặt dấu thanh.
-2. **Sửa lỗi chính tả & nhầm lẫn ký tự OCR:** Bộ quy tắc ngữ pháp và từ điển âm tiết tiếng Việt khắc phục nhầm lẫn `l/1/I`, `0/O`, lỗi mất mũ `ă/â`, dính dấu `ơ/ư`.
-3. **Đánh giá độ tin cậy:** Gán điểm tin cậy (Confidence score 0.0 - 1.0) cho từng từ; gắn cờ các từ $< 80\%$ để hiển thị màu vàng trên giao diện.
+2. **Sửa lỗi chính tả & dấu tiếng Việt theo ngữ cảnh N-gram (`VietnameseSpellCorrector`):**
+   - Kết hợp từ điển âm tiết tiếng Việt, bảng nhầm lẫn nguyên âm/mũ/dấu thanh OCR và điểm ngữ cảnh cụm từ 1-gram, 2-gram, 3-gram (tự động tích hợp `SymSpell` nếu có) để khôi phục chính xác dấu tiếng Việt (`đưạc` → `được`, `cấp dưởi` → `cấp dưới`, `gổm` → `gồm`, `tổ chửc` → `tổ chức`, `không ngửng đổi mởi` → `không ngừng đổi mới`, `nhan vien` → `nhân viên`, `thuong hiệu tiếp can` → `thương hiệu tiếp cận`, `rộng hon` → `rộng hơn`).
+   - Tự động nhận diện và bảo vệ từ hợp lệ (`is_valid_token`): số, phần trăm, ngày tháng, địa chỉ email, số điện thoại Việt Nam và tên riêng viết hoa (`Np`).
+3. **Đánh giá độ tin cậy:** Gán điểm tin cậy (Confidence score 0.0 - 1.0) cho từng từ; gắn cờ các từ $< 80\%$ để hiển thị màu vàng và điều hướng nhanh trên giao diện.
 
 ### 3.7. Module Xuất File Đa Định Dạng (Multi-Format Exporters)
 1. **Searchable PDF (Ctrl + F):** Nhúng invisible text layer (render mode 3) có tọa độ khớp 100% với ảnh scan gốc.
@@ -280,30 +284,26 @@ flowchart TD
 3. **Microsoft Excel (`.xlsx`):** Trích xuất các bảng phát hiện được thành worksheet riêng biệt (`openpyxl`), giữ nguyên hàng, cột và ô gộp.
 4. **Markdown (`.md`), Plain Text (`.txt`) & JSON.**
 
-### 3.8. Module Giao Diện Người Dùng & Bộ So Sánh Lỗi (PySide6 GUI & Side-by-Side Editor)
-1. **Giao diện chuẩn Desktop hiện đại (Modern PySide6 UX):**
-   - Menu Bar, Toolbar với icon rõ ràng, phím tắt tiêu chuẩn.
-   - **Kéo thả file (Drag & Drop):** Kéo PDF/ảnh từ File Explorer vào cửa sổ ứng dụng để mở ngay lập tức.
-   - **Danh sách file gần đây (Recent Files):** Menu `File > Recent Files` lưu 10 file gần nhất (`QSettings`).
-   - **Lưu/Phục hồi trạng thái cửa sổ (Window State Persistence):** Nhớ vị trí, kích thước cửa sổ và bố trí dock khi đóng và mở lại ứng dụng.
-   - Thumbnail Sidebar: Xem trước trang thu nhỏ, trạng thái xử lý từng trang (Chờ, Đang chạy, Xong, Lỗi).
-   - Cài đặt linh hoạt: Thư mục Input/Output, thư mục Model Weights, công tắc bật/tắt từng bộ lọc tiền xử lý.
+### 3.8. Module Giao Diện Không Gian Đọc PDF Chuyên Nghiệp, Bộ So Sánh Lỗi & Tương Thích HiDPI
+1. **Không gian đọc PDF chuyên nghiệp (Professional PDF Reader & OCR Workspace):**
+   - **Khung điều hướng bên trái (`NavigationDock`):** Hiển thị thẻ thông tin tài liệu (tên tệp, số trang, dung lượng, tiến độ `Đã OCR: X/Y trang`, nút **OCR trang hiện tại**), cùng 3 tab: **Trang** (danh sách trang kèm huy hiệu `✓ Đã OCR` / `○ Chưa OCR`), **Mục lục** (cây Bookmarks/Outline của PDF) và **Tìm kiếm** toàn văn xuyên suốt các trang.
+   - Menu Bar, Toolbar với icon đa độ phân giải (`@1x` / `@2x`), phím tắt tiêu chuẩn.
+   - **Kéo thả file (Drag & Drop)**, **Danh sách file gần đây (Recent Files)**, **Lưu/Phục hồi trạng thái cửa sổ (Window State Persistence)**.
+   - **Nhập model tùy chỉnh:** Hỗ trợ nạp trực tiếp tệp `.pth`, `.pdparams` hoặc thư mục checkpoint từ `SettingsDialog` và ngay trong ô chọn biến thể của `SettingsDock`.
 2. **Bộ So Sánh Lỗi Trực Quan (Side-by-Side Verification Editor):**
-   - Màn hình chia đôi: Bên trái ảnh gốc trên `QGraphicsView` (zoom/pan vô cực), bên phải là trình soạn thảo văn bản (`QTextEdit`).
-   - Đồng bộ hai chiều: Click từ bên text -> ảnh gốc tự động zoom và highlight bounding box; click bounding box trên ảnh -> con trỏ văn bản nhảy đến từ tương ứng.
-   - Tô màu vàng cảnh báo các từ có độ tin cậy thấp.
-   - **Undo/Redo** (`Ctrl+Z` / `Ctrl+Y`) trong trình soạn thảo.
-   - **Find & Replace** (`Ctrl+H`) sửa hàng loạt lỗi OCR lặp lại (ví dụ: thay tất cả `đuợc` thành `được`).
-3. **Chọn Vùng OCR (Region Selection):**
-   - Cho phép người dùng vẽ hình chữ nhật trên `DocumentCanvas` để chỉ OCR một vùng cụ thể thay vì toàn bộ trang. Rất hữu ích khi chỉ cần trích xuất 1 đoạn hoặc 1 bảng biểu.
+   - Màn hình chia đôi: Bên trái ảnh gốc trên `DocumentCanvas` (`QGraphicsView` hỗ trợ `Vừa trang`, `Vừa ngang`, xoay trang 90° `↺`/`↻`, cuộn chuyển trang và `Ctrl + Lăn chuột` để thu phóng), bên phải là trình soạn thảo văn bản (`QTextEdit`).
+   - Đồng bộ hai chiều giữa văn bản và khung bounding box trên ảnh.
+   - Tô màu vàng cảnh báo các từ có độ tin cậy thấp (`< 80%`) kèm nút điều hướng nhanh **`◀ Từ nghi ngờ` / `Từ nghi ngờ ▶`**.
+   - Nút **`Sửa chính tả`** 1 chạm áp dụng sửa lỗi chính tả N-gram trực tiếp trên trình soạn thảo (hỗ trợ `Ctrl+Z`).
+   - **Undo/Redo** (`Ctrl+Z` / `Ctrl+Y`) và **Find & Replace** (`Ctrl+H`).
+3. **Chọn Vùng OCR (`Ctrl+R`) & Ép Buộc OCR (`force_ocr`):**
+   - Vẽ hình chữ nhật trên `DocumentCanvas` để chỉ OCR một vùng cụ thể; tùy chọn **Ép buộc OCR** bỏ qua lớp chữ gốc khi PDF bị lỗi bảng mã.
 4. **Trình Chỉnh Sửa Bảng Tương Tác (Table Grid Editor):**
    - Hộp thoại hiển thị bảng dạng lưới `QTableWidget` cho phép sửa trực tiếp ô trước khi xuất ra Excel.
 5. **Hộp Thoại Tải Model Weights (Download Progress Dialog):**
-   - Khi người dùng lần đầu kích hoạt một model, hiển thị hộp thoại với thanh tiến trình %, tốc độ mạng, thời gian ước tính còn lại.
-   - Nút Hủy tải an toàn (không corrupt file weights).
-   - Xác minh tính toàn vẹn file SHA256 sau khi tải xong.
-   - Thông báo rõ ràng nếu không có kết nối Internet hoặc tải thất bại.
-6. **Hệ Thống Theme Hiện Đại:** Hỗ trợ Dark theme sang trọng và Light theme thanh lịch.
+   - Hiển thị thanh tiến trình %, tốc độ mạng, ETA, nút Hủy tải an toàn và xác minh SHA256.
+6. **Hệ Thống Theme Hiện Đại & Tương Thích HiDPI:**
+   - Hỗ trợ Dark theme, Light theme và Theo hệ thống; kích hoạt `HighDpiScaleFactorRoundingPolicy.PassThrough`, icon `@2x` sắc nét và bố cục co giãn không cắt chữ trên màn hình 125%–200% (2K/4K).
 
 ---
 
@@ -313,36 +313,42 @@ flowchart TD
 d:\GitHub\pdf-ocr\
 ├── src/
 │   ├── __init__.py
-│   ├── main.py                     # Điểm khởi chạy ứng dụng (Entry point)
-│   ├── config.py                   # Quản lý cấu hình toàn cục & QSettings
+│   ├── main.py                     # Điểm khởi chạy ứng dụng (HiDPI scaling, logging, theme, cửa sổ)
+│   ├── config.py                   # Quản lý cấu hình toàn cục, SQLite & JSON mirror
 │   ├── constants.py                # Hằng số, mã màu, enum, bounding box types
 │   │
 │   ├── services/                   # Tầng dịch vụ điều phối ứng dụng (Service Layer)
 │   │   ├── __init__.py
-│   │   ├── weights_manager.py      # QUẢN LÝ WEIGHTS TÙY CHỈNH, cache redirect, download hooks
+│   │   ├── weights_manager.py      # QUẢN LÝ WEIGHTS TÙY CHỈNH, cache redirect, import custom weights
 │   │   ├── pipeline_service.py     # Điều phối luồng xử lý toàn trình (Loader -> OCR -> Export)
-│   │   └── export_service.py       # Điều phối các exporter theo yêu cầu
+│   │   ├── page_processor.py       # Xử lý từng trang (fast-path PDF text, force_ocr, OCR fallback)
+│   │   ├── device_detector.py      # Tự động phát hiện CUDA GPU / VRAM / CPU
+│   │   └── settings_store.py       # Kho cấu hình SQLite nguyên tử
 │   │
 │   ├── core/                       # Tầng nghiệp vụ cốt lõi (Core Domain)
 │   │   ├── __init__.py
 │   │   ├── exceptions.py           # Phân cấp ngoại lệ chuẩn (PDFOCRError, WeightsError, OCREngineError...)
 │   │   ├── models.py               # Data classes bất biến (frozen): OCRDocument, OCRPage, OCRBlock...
-│   │   ├── document_loader.py      # Tải PDF (PyMuPDF), rasterize ảnh, hỗ trợ PNG/JPG/TIFF
+│   │   ├── document_loader.py      # Tải PDF (PyMuPDF), trích xuất TOC/Outline, rasterize ảnh
 │   │   ├── pdf_classifier.py       # Phân loại PDF: scanned vs text-based vs hybrid, trích xuất text layer
 │   │   ├── preprocessor.py         # Auto-deskew, rotate 0/90/180/270°, denoise, CLAHE, shadow removal
-│   │   ├── layout_analyzer.py      # Phân tích khối, thứ tự đọc tự nhiên đa cột (Reading Order)
+│   │   ├── layout_analyzer.py      # Phân tích khối, XY-Cut Projection Profile & thứ tự đọc đa cột
 │   │   ├── table_extractor.py      # Tách cấu trúc bảng biểu, hàng, cột, cell spans
-│   │   └── postprocessor.py        # Chuẩn hóa tiếng Việt NFC, sửa lỗi ký tự OCR, chấm điểm tin cậy
+│   │   ├── postprocessor.py        # Chuẩn hóa tiếng Việt NFC, sửa lỗi ký tự OCR, chấm điểm tin cậy
+│   │   ├── spell_corrector.py      # Sửa lỗi chính tả & dấu tiếng Việt theo ngữ cảnh N-gram + SymSpell
+│   │   └── transcript.py           # Đồng bộ chỉnh sửa văn bản ngược lại cấu trúc OCRPage
 │   │
 │   ├── engines/                    # Tầng Adapter OCR Models (Extensible Plugin Architecture)
 │   │   ├── __init__.py
 │   │   ├── base_engine.py          # Abstract Base Class BaseOCREngine & EngineMetadata
 │   │   ├── engine_registry.py      # Service Locator & Registry cho các OCR Provider
-│   │   ├── vietocr_engine.py       # Provider VietOCR (SOTA tiếng Việt)
-│   │   ├── paddle_engine.py        # Provider PaddleOCR & PP-Structure
+│   │   ├── vietocr_engine.py       # Provider VietOCR (vgg_transformer, vgg_seq2seq, resnet_transformer)
+│   │   ├── paddle_engine.py        # Provider PaddleOCR (PP-OCRv3..v6, PP-StructureV3, PaddleOCR-VL)
 │   │   ├── surya_engine.py         # Provider Surya OCR
-│   │   ├── transformer_engine.py   # Provider TrOCR (Chữ viết tay & chữ in)
-│   │   └── easyocr_engine.py       # Provider EasyOCR
+│   │   ├── transformer_engine.py   # Provider TrOCR (Small/Base/Large Handwritten, Printed, STR)
+│   │   ├── easyocr_engine.py       # Provider EasyOCR (latin_g2, english_g2, latin_g1, craft/dbnet18)
+│   │   ├── chandra_engine.py       # Provider Chandra OCR (chandra v1, chandra-ocr-2 5B)
+│   │   └── dots_ocr_engine.py      # Provider dots.ocr (dots.ocr 1.7B, dots.mocr 1.5)
 │   │
 │   ├── exporters/                  # Tầng Adapter Xuất File (Extensible Exporter Architecture)
 │   │   ├── __init__.py
@@ -358,29 +364,35 @@ d:\GitHub\pdf-ocr\
 │   │   ├── __init__.py
 │   │   ├── signals.py              # PySide6 Signal/Slot cho luồng xử lý
 │   │   ├── ocr_worker.py           # QRunnable xử lý từng trang độc lập
+│   │   ├── region_worker.py        # QRunnable nhận diện vùng chọn
+│   │   ├── export_worker.py        # QRunnable xuất tài liệu dưới nền
 │   │   └── batch_manager.py        # Quản lý hàng đợi batch, tạm dừng/hủy bỏ
 │   │
-│   ├── gui/                        # Giao diện người dùng PySide6
+│   ├── gui/                        # Giao diện người dùng PySide6 (tương thích HiDPI)
 │   │   ├── __init__.py
 │   │   ├── main_window.py          # Cửa sổ chính tích hợp toàn bộ docks
+│   │   ├── document_session.py     # Quản lý phiên tài liệu, bộ đệm trang, tìm kiếm & xoay trang
+│   │   ├── i18n.py                 # Đa ngôn ngữ giao diện Việt - Anh
 │   │   ├── components/
 │   │   │   ├── menu_bar.py         # Thanh menu (File, Edit, View, OCR, Tools, Help)
-│   │   │   ├── tool_bar.py         # Thanh công cụ tác vụ nhanh
+│   │   │   ├── tool_bar.py         # Thanh công cụ tác vụ nhanh với icon @1x/@2x HiDPI
+│   │   │   ├── navigation_dock.py  # Dock điều hướng PDF (Thông tin tệp, Trang ✓/○, Mục lục, Tìm kiếm)
 │   │   │   ├── thumbnail_dock.py   # Danh sách thumbnail trang & danh sách file
-│   │   │   ├── document_canvas.py  # QGraphicsView hiển thị ảnh & Bounding Boxes tương tác
-│   │   │   ├── comparison_dock.py  # Bộ so sánh lỗi: Ảnh gốc vs Text Editor hai chiều
-│   │   │   ├── settings_dock.py    # Dock chỉnh tham số model & bộ lọc tiền xử lý
-│   │   │   └── status_bar.py       # Thanh trạng thái, chỉ số RAM/VRAM, tiến độ
+│   │   │   ├── document_canvas.py  # QGraphicsView hiển thị ảnh, xoay trang, vừa ngang & Bounding Boxes
+│   │   │   ├── comparison_dock.py  # Bộ so sánh lỗi hai chiều, duyệt từ nghi ngờ & nút Sửa chính tả
+│   │   │   ├── settings_dock.py    # Dock chỉnh mô hình, biến thể, tiền xử lý & hậu xử lý
+│   │   │   ├── notifications.py    # Thông báo toast 4 cấp
+│   │   │   └── status_bar.py       # Thanh trạng thái, tiến độ, ETA
 │   │   ├── dialogs/
 │   │   │   ├── batch_dialog.py     # Hộp thoại quét hàng loạt nhiều file/thư mục
 │   │   │   ├── table_editor.py     # Hộp thoại xem và sửa bảng biểu tương tác
 │   │   │   ├── export_dialog.py    # Hộp thoại tùy chọn xuất tài liệu
-│   │   │   ├── settings_dialog.py  # Hộp thoại cấu hình chi tiết (Custom Weights Directory, GPU/CPU)
+│   │   │   ├── settings_dialog.py  # Hộp thoại cấu hình chi tiết & nhập model tùy chỉnh
 │   │   │   ├── download_dialog.py  # Hộp thoại tải Model Weights với thanh tiến trình & xác minh SHA256
 │   │   │   └── find_replace.py     # Hộp thoại Find & Replace cho Bộ so sánh lỗi
 │   │   └── styles/
-│   │       ├── dark_theme.qss      # Giao diện tối hiện đại
-│   │       ├── light_theme.qss     # Giao diện sáng thanh lịch
+│   │       ├── dark_theme.qss      # Giao diện tối hiện đại (chuẩn HiDPI)
+│   │       ├── light_theme.qss     # Giao diện sáng thanh lịch (chuẩn HiDPI)
 │   │       └── style_manager.py    # Bộ nạp và đổi theme động
 │   │
 │   ├── models/                     # Thư mục lưu trữ model & weights mặc định (src/models/)
@@ -388,7 +400,10 @@ d:\GitHub\pdf-ocr\
 │   │   ├── paddle/
 │   │   ├── surya/
 │   │   ├── trocr/
-│   │   └── easyocr/
+│   │   ├── easyocr/
+│   │   ├── chandra/
+│   │   ├── dots_ocr/
+│   │   └── custom/
 │   │
 │   └── utils/
 │       ├── __init__.py
@@ -403,8 +418,9 @@ d:\GitHub\pdf-ocr\
 │
 ├── docs/
 │   ├── implementation_plan.md      # Bản đặc tả kỹ thuật này
-│   └── user_guide.md               # Sổ tay hướng dẫn người dùng
-│   └── checklist.md                # Checklist theo dõi tiến độ chi tiết từng task
+│   ├── user_guide.md               # Sổ tay hướng dẫn người dùng
+│   ├── checklist.md                # Checklist theo dõi tiến độ chi tiết từng task
+│   └── release_notes.md            # Ghi chú phát hành qua các phiên bản
 ├── tests/
 │   ├── conftest.py                 # Pytest fixtures dùng chung
 │   ├── fixtures/                   # File mẫu test (sample_scanned.pdf, sample_vi.png, sample_table.png)
