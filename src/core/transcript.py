@@ -153,3 +153,43 @@ def _union(boxes: Sequence[BoundingBox]) -> BoundingBox | None:
         max(box.x2 for box in boxes),
         max(box.y2 for box in boxes),
     )
+
+
+_PARAGRAPH_LIST_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
+
+
+def reconstruct_paragraphs(raw_text: str) -> str:
+    """Merge broken lines within paragraphs while preserving true paragraph breaks."""
+    if not raw_text:
+        return ""
+    paragraphs: list[str] = []
+    current_para: list[str] = []
+    for line in raw_text.splitlines():
+        stripped = line.strip()
+        if not stripped:
+            if current_para:
+                paragraphs.append(_join_paragraph_lines(current_para))
+                current_para = []
+            continue
+        current_para.append(stripped)
+    if current_para:
+        paragraphs.append(_join_paragraph_lines(current_para))
+    return "\n\n".join(paragraphs)
+
+
+def _join_paragraph_lines(lines: list[str]) -> str:
+    if not lines:
+        return ""
+    if len(lines) == 1:
+        return lines[0]
+    parts: list[str] = [lines[0]]
+    for idx in range(1, len(lines)):
+        prev, curr = lines[idx - 1], lines[idx]
+        if prev.endswith(":") or bool(_PARAGRAPH_LIST_REGEX.match(curr)):
+            parts.append("\n" + curr)
+        elif prev.endswith("-") and not prev.endswith(" -"):
+            parts[-1] = parts[-1][:-1]
+            parts.append(curr)
+        else:
+            parts.append(" " + curr)
+    return "".join(parts)

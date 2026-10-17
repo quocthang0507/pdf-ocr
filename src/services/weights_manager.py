@@ -67,6 +67,8 @@ class ModelWeightsManager:
         "surya",
         "trocr",
         "easyocr",
+        "chandra",
+        "dots_ocr",
         "torch",
         "huggingface",
     )
@@ -162,6 +164,164 @@ class ModelWeightsManager:
             raise WeightsError(
                 "Không đủ dung lượng trống. Vui lòng giải phóng ổ đĩa hoặc đổi thư mục."
             )
+
+    def list_available_models(self, engine_id: str) -> list[tuple[str, str]]:
+        """Discover built-in and custom models in the engine's weights folder."""
+        try:
+            engine_dir = self.get_engine_weights_dir(engine_id)
+        except WeightsError:
+            return []
+        if engine_id == "vietocr":
+            return _discover_vietocr_models(engine_dir)
+        if engine_id == "trocr":
+            return _discover_trocr_models(engine_dir)
+        if engine_id == "easyocr":
+            return _discover_easyocr_models(engine_dir)
+        if engine_id == "paddle":
+            return _discover_paddle_models(engine_dir)
+        if engine_id == "chandra":
+            return _discover_hf_models(
+                engine_dir,
+                [
+                    ("Chandra OCR v1 (Bố cục, bảng, viết tay)", "datalab-to/chandra"),
+                    (
+                        "Chandra OCR v2 (Flagship 5B - Chính xác cao nhất)",
+                        "datalab-to/chandra-ocr-2",
+                    ),
+                ],
+            )
+        if engine_id == "dots_ocr":
+            return _discover_hf_models(
+                engine_dir,
+                [
+                    (
+                        "dots.ocr 1.7B (Bố cục, bảng, công thức)",
+                        "rednote-hilab/dots.ocr",
+                    ),
+                    ("dots.mocr 1.5 (Đa tác vụ + SVG)", "rednote-hilab/dots.mocr"),
+                    ("dots-studio/dots.ocr (Chính thức)", "dots-studio/dots.ocr"),
+                ],
+            )
+        return []
+
+    def import_model_file(
+        self, engine_id: str, source_path: str | Path, custom_name: str = ""
+    ) -> Path:
+        """Copy a custom weights file or model folder into the engine's directory."""
+        raw = str(source_path).strip()
+        if not raw or "\x00" in raw:
+            raise WeightsError("Đường dẫn tệp model không hợp lệ.")
+        source = Path(raw).expanduser().resolve()
+        if not source.exists():
+            raise WeightsError("Không tìm thấy tệp hoặc thư mục model nguồn.")
+        target_dir = self.get_engine_weights_dir(engine_id)
+        safe_name = Path(custom_name.strip() or source.name).name
+        if not safe_name or safe_name in {".", ".."}:
+            raise WeightsError("Tên tệp model không hợp lệ.")
+        destination = (target_dir / safe_name).resolve()
+        if not destination.is_relative_to(target_dir):
+            raise WeightsError("Đường dẫn đích không hợp lệ.")
+        if destination == source:
+            return destination
+        try:
+            if source.is_dir():
+                if destination.exists():
+                    shutil.rmtree(destination)
+                shutil.copytree(source, destination)
+            else:
+                shutil.copy2(source, destination)
+            logger.info("Đã nhập model '{}' cho '{}'.", destination.name, engine_id)
+            return destination
+        except OSError as error:
+            raise WeightsError("Không thể sao chép tệp model vào thư mục.") from error
+
+
+def _discover_vietocr_models(engine_dir: Path) -> list[tuple[str, str]]:
+    builtins = [
+        ("VGG19-BN + Transformer (Chính xác cao)", "vgg_transformer"),
+        ("VGG19-BN + Seq2Seq Attention (Tốc độ nhanh)", "vgg_seq2seq"),
+        ("ResNet50 + Transformer (Chữ phức tạp)", "resnet_transformer"),
+    ]
+    results = list(builtins)
+    for pth_file in sorted(engine_dir.glob("*.pth")):
+        if pth_file.stem not in {
+            "vgg_transformer",
+            "vgg_seq2seq",
+            "resnet_transformer",
+        }:
+            results.append((f"Tùy chỉnh: {pth_file.name}", str(pth_file)))
+    return results
+
+
+def _discover_trocr_models(engine_dir: Path) -> list[tuple[str, str]]:
+    return _discover_hf_models(
+        engine_dir,
+        [
+            (
+                "Base - Chữ viết tay (~334M, Cân bằng)",
+                "microsoft/trocr-base-handwritten",
+            ),
+            (
+                "Base - Chữ in / Hóa đơn (~334M, Cân bằng)",
+                "microsoft/trocr-base-printed",
+            ),
+            (
+                "Small - Chữ viết tay (~62M, Nhanh & nhẹ)",
+                "microsoft/trocr-small-handwritten",
+            ),
+            ("Small - Chữ in (~62M, Nhanh & nhẹ)", "microsoft/trocr-small-printed"),
+            (
+                "Large - Chữ viết tay (~558M, Chính xác nhất)",
+                "microsoft/trocr-large-handwritten",
+            ),
+            ("Large - Chữ in (~558M, Chính xác nhất)", "microsoft/trocr-large-printed"),
+            ("Base - Chữ cảnh tự nhiên (Scene Text)", "microsoft/trocr-base-str"),
+            ("Large - Chữ cảnh tự nhiên (Scene Text)", "microsoft/trocr-large-str"),
+        ],
+    )
+
+
+def _discover_hf_models(
+    engine_dir: Path, builtins: list[tuple[str, str]]
+) -> list[tuple[str, str]]:
+    results = list(builtins)
+    for item in sorted(engine_dir.iterdir()):
+        if item.is_dir() and (
+            (item / "config.json").is_file()
+            or any(item.glob("*.safetensors"))
+            or any(item.glob("*.bin"))
+        ):
+            results.append((f"Model cục bộ: {item.name}", str(item)))
+    return results
+
+
+def _discover_easyocr_models(engine_dir: Path) -> list[tuple[str, str]]:
+    results = [
+        ("Tự động theo ngôn ngữ", ""),
+        ("Generation 2 - Latin / Tiếng Việt (latin_g2)", "latin_g2"),
+        ("Generation 2 - Tiếng Anh tối ưu (english_g2)", "english_g2"),
+        ("Generation 1 - Latin cổ điển (latin_g1)", "latin_g1"),
+    ]
+    for pth in sorted(engine_dir.glob("*.pth")):
+        if pth.name not in {
+            "craft_mlt_25k.pth",
+            "latin_g2.pth",
+            "english_g2.pth",
+            "latin_g1.pth",
+        }:
+            results.append((f"Tùy chỉnh: {pth.stem}", pth.stem))
+    return results
+
+
+def _discover_paddle_models(engine_dir: Path) -> list[tuple[str, str]]:
+    results = [("Mặc định theo phiên bản", "")]
+    for item in sorted(engine_dir.iterdir()):
+        if item.is_dir() and (
+            (item / "inference.pdmodel").is_file()
+            or (item / "inference.json").is_file()
+        ):
+            results.append((f"Model cục bộ: {item.name}", str(item)))
+    return results
 
 
 def _collect_files(source: Path) -> tuple[list[Path], int]:

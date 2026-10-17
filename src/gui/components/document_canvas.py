@@ -297,6 +297,22 @@ class DocumentCanvas(QGraphicsView):
             min(viewport.width() / page.width(), viewport.height() / page.height())
         )
 
+    def fit_page(self) -> None:
+        """Fit the entire page within the viewport."""
+        self.reset_zoom()
+
+    def fit_width(self) -> None:
+        """Fit the page width to the viewport width for comfortable reading."""
+        if self._page_item is None:
+            self._apply_zoom(1.0)
+            return
+        page = self._page_item.boundingRect()
+        viewport = self.viewport().rect()
+        if page.isEmpty() or viewport.isEmpty():
+            self._apply_zoom(1.0)
+            return
+        self._apply_zoom(viewport.width() / page.width())
+
     def _apply_zoom(self, factor: float) -> None:
         self._zoom = min(max(factor, MIN_ZOOM), MAX_ZOOM)
         self.setTransform(QTransform.fromScale(self._zoom, self._zoom))

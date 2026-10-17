@@ -161,6 +161,7 @@ class ComparisonDock(QWidget):
     """
 
     page_change_requested = Signal(int)
+    page_rotate_requested = Signal(int)
     transcript_edited = Signal(str)
     table_edited = Signal(int, OCRTable)
     region_ocr_requested = Signal(BoundingBox)
@@ -177,6 +178,24 @@ class ComparisonDock(QWidget):
         self.editor.setAcceptRichText(False)
         self.editor.setUndoRedoEnabled(True)
         self.editor.setPlaceholderText("Kết quả nhận diện sẽ hiển thị tại đây.")
+        self._init_region_panel()
+        self._init_structure_panel()
+        self._block_spans: tuple[TextSpan, ...] = ()
+        self._uncertain_spans: tuple[TextSpan, ...] = ()
+        self._uncertain_index = -1
+        self._page: OCRPage | None = None
+        self._current_page = 0
+        self._total_pages = 0
+        self._init_nav_controls()
+        self.table_editor: TableEditorDialog | None = None
+        self.find_replace_dialog: FindReplaceDialog | None = None
+        self._syncing = False
+        self._shortcuts = self._create_shortcuts()
+        self._build_layout()
+        self._connect_signals()
+        self._show_zoom(self.canvas.zoom_factor())
+
+    def _init_region_panel(self) -> None:
         self.region_panel = QFrame(self)
         self.region_panel.setObjectName("region_panel")
         self.region_title = QLabel("Kết quả vùng chọn", self.region_panel)
@@ -199,14 +218,21 @@ class ComparisonDock(QWidget):
         self.region_label = QPlainTextEdit(self.region_panel)
         self.region_label.setObjectName("region_result")
         self.region_label.setReadOnly(True)
-        # A long selection scrolls inside the panel instead of hiding the editor.
         self.region_label.setMaximumHeight(_REGION_RESULT_MAX_HEIGHT)
         self.region_panel.hide()
+
+    def _init_structure_panel(self) -> None:
         self.structure_panel = QFrame(self)
         self.structure_panel.setObjectName("structure_panel")
         self.structure_label = QLabel(self.structure_panel)
         self.structure_label.setObjectName("structure_summary")
         self.structure_label.setWordWrap(True)
+        self.uncertain_prev_btn = QPushButton("◀ Từ nghi ngờ", self.structure_panel)
+        self.uncertain_prev_btn.setObjectName("uncertain_prev_button")
+        self.uncertain_prev_btn.setToolTip("Đi tới từ có độ tin cậy thấp phía trước")
+        self.uncertain_next_btn = QPushButton("Từ nghi ngờ ▶", self.structure_panel)
+        self.uncertain_next_btn.setObjectName("uncertain_next_button")
+        self.uncertain_next_btn.setToolTip("Đi tới từ có độ tin cậy thấp tiếp theo")
         self.table_combo = QComboBox(self.structure_panel)
         self.table_combo.setObjectName("table_combo")
         self.table_combo.setToolTip("Chọn bảng biểu để xem trên trang")
@@ -217,10 +243,8 @@ class ComparisonDock(QWidget):
             "(hoặc nhấp đúp vào khung bảng trên trang)"
         )
         self.structure_panel.hide()
-        self._block_spans: tuple[TextSpan, ...] = ()
-        self._page: OCRPage | None = None
-        self._current_page = 0
-        self._total_pages = 0
+
+    def _init_nav_controls(self) -> None:
         self.prev_page_btn = QPushButton(self)
         self.prev_page_btn.setObjectName("prev_page_button")
         self.prev_page_btn.setToolTip("Trang trước")
@@ -265,16 +289,27 @@ class ComparisonDock(QWidget):
         self.zoom_in_btn = QPushButton("+", self)
         self.zoom_in_btn.setObjectName("zoom_in_button")
         self.zoom_in_btn.setToolTip("Phóng to")
-        for button in (self.zoom_out_btn, self.zoom_in_btn):
+        self.rotate_left_btn = QPushButton("↺", self)
+        self.rotate_left_btn.setObjectName("rotate_left_button")
+        self.rotate_left_btn.setToolTip("Xoay trái 90°")
+        self.rotate_right_btn = QPushButton("↻", self)
+        self.rotate_right_btn.setObjectName("rotate_right_button")
+        self.rotate_right_btn.setToolTip("Xoay phải 90°")
+        for button in (
+            self.zoom_out_btn,
+            self.zoom_in_btn,
+            self.rotate_left_btn,
+            self.rotate_right_btn,
+        ):
             button.setFixedSize(30, 30)
-        self.zoom_reset_btn = QPushButton("Vừa khung", self)
+        self.zoom_reset_btn = QPushButton("Vừa trang", self)
         self.zoom_reset_btn.setObjectName("zoom_reset_button")
-        self.zoom_reset_btn.setToolTip("Vừa khung cửa sổ")
-        self.table_editor: TableEditorDialog | None = None
-        self.find_replace_dialog: FindReplaceDialog | None = None
-        self._syncing = False
-        self._shortcuts = self._create_shortcuts()
-        self._build_layout()
+        self.zoom_reset_btn.setToolTip("Hiển thị vừa toàn trang")
+        self.fit_width_btn = QPushButton("Vừa ngang", self)
+        self.fit_width_btn.setObjectName("fit_width_button")
+        self.fit_width_btn.setToolTip("Hiển thị vừa chiều ngang khung nhìn")
+
+    def _connect_signals(self) -> None:
         self.canvas.block_selected.connect(self._focus_text_block)
         self.canvas.block_activated.connect(self.edit_block_table)
         self.canvas.region_selected.connect(self.region_ocr_requested)
@@ -290,7 +325,15 @@ class ComparisonDock(QWidget):
         self.zoom_in_btn.clicked.connect(self.canvas.zoom_in)
         self.zoom_out_btn.clicked.connect(self.canvas.zoom_out)
         self.zoom_reset_btn.clicked.connect(self.canvas.reset_zoom)
-        self._show_zoom(self.canvas.zoom_factor())
+        self.fit_width_btn.clicked.connect(self.canvas.fit_width)
+        self.rotate_left_btn.clicked.connect(
+            lambda: self.page_rotate_requested.emit(-90)
+        )
+        self.rotate_right_btn.clicked.connect(
+            lambda: self.page_rotate_requested.emit(90)
+        )
+        self.uncertain_prev_btn.clicked.connect(self.jump_to_prev_uncertain)
+        self.uncertain_next_btn.clicked.connect(self.jump_to_next_uncertain)
 
     def _build_layout(self) -> None:
         canvas_pane = QWidget(self)
@@ -309,9 +352,12 @@ class ComparisonDock(QWidget):
         nav_layout.addWidget(self.zoom_label)
         nav_layout.addWidget(self.zoom_in_btn)
         nav_layout.addWidget(self.zoom_reset_btn)
-        nav_layout.addSpacing(12)
+        nav_layout.addWidget(self.fit_width_btn)
+        nav_layout.addWidget(self.rotate_left_btn)
+        nav_layout.addWidget(self.rotate_right_btn)
+        nav_layout.addSpacing(8)
         nav_layout.addWidget(_separator(nav_bar))
-        nav_layout.addSpacing(12)
+        nav_layout.addSpacing(8)
         nav_layout.addWidget(_group_label("Trang", nav_bar))
         nav_layout.addWidget(self.prev_page_btn)
         nav_layout.addWidget(self.page_spin)
@@ -329,6 +375,8 @@ class ComparisonDock(QWidget):
         structure_layout = QHBoxLayout(self.structure_panel)
         structure_layout.setContentsMargins(8, 4, 8, 4)
         structure_layout.addWidget(self.structure_label, 1)
+        structure_layout.addWidget(self.uncertain_prev_btn)
+        structure_layout.addWidget(self.uncertain_next_btn)
         structure_layout.addWidget(self.table_combo)
         structure_layout.addWidget(self.edit_table_button)
         self.table_combo.currentIndexChanged.connect(self._show_table_on_canvas)
@@ -441,6 +489,8 @@ class ComparisonDock(QWidget):
         if not isinstance(image, np.ndarray):
             raise TypeError("Dữ liệu hình ảnh phải là đối tượng numpy.ndarray.")
         self._block_spans = ()
+        self._uncertain_spans = ()
+        self._uncertain_index = -1
         self._page = None
         self.canvas.set_image(image)
         with self._suspend_sync():
@@ -455,6 +505,8 @@ class ComparisonDock(QWidget):
             raise ValueError("Dữ liệu trang phải là đối tượng OCRPage.")
         transcript, blocks, uncertain = _render(page)
         self._block_spans = blocks
+        self._uncertain_spans = uncertain
+        self._uncertain_index = -1
         self._page = page
         self.canvas.set_image(image)
         self.canvas.set_blocks(page.blocks)
@@ -467,6 +519,8 @@ class ComparisonDock(QWidget):
     def clear(self) -> None:
         """Drop both panes so the next document starts from an empty state."""
         self._block_spans = ()
+        self._uncertain_spans = ()
+        self._uncertain_index = -1
         self._page = None
         self.table_editor = None
         self.set_page_info(0, 0)
@@ -484,6 +538,32 @@ class ComparisonDock(QWidget):
     def apply_zoom(self, step: int) -> None:
         """Route a zoom command from the window to the page view."""
         getattr(self.canvas, _ZOOM_ACTIONS[step])()
+
+    def uncertain_count(self) -> int:
+        return len(self._uncertain_spans)
+
+    def jump_to_next_uncertain(self) -> None:
+        if not self._uncertain_spans:
+            return
+        self._uncertain_index = (self._uncertain_index + 1) % len(self._uncertain_spans)
+        self._select_uncertain_span(self._uncertain_spans[self._uncertain_index])
+
+    def jump_to_prev_uncertain(self) -> None:
+        if not self._uncertain_spans:
+            return
+        self._uncertain_index = (self._uncertain_index - 1) % len(self._uncertain_spans)
+        self._select_uncertain_span(self._uncertain_spans[self._uncertain_index])
+
+    def _select_uncertain_span(self, span: TextSpan) -> None:
+        cursor = self.editor.textCursor()
+        cursor.setPosition(span.start)
+        cursor.setPosition(span.end, QTextCursor.MoveMode.KeepAnchor)
+        self.editor.setTextCursor(cursor)
+        self.editor.ensureCursorVisible()
+        block_idx = self._block_at(span.start)
+        if block_idx is not None:
+            with self._suspend_sync():
+                self.canvas.focus_on_block(block_idx)
 
     # -- table editing ----------------------------------------------------
 
@@ -532,8 +612,11 @@ class ComparisonDock(QWidget):
             self.table_combo.addItem(f"Bảng {position} ({len(table.rows)}×{columns})")
         self.table_combo.blockSignals(False)
         has_tables = bool(page.tables)
+        has_uncertain = bool(self._uncertain_spans)
         self.table_combo.setVisible(has_tables)
         self.edit_table_button.setVisible(has_tables)
+        self.uncertain_prev_btn.setVisible(has_uncertain)
+        self.uncertain_next_btn.setVisible(has_uncertain)
         heading_count = sum(
             counts[kind]
             for kind in (
@@ -543,12 +626,16 @@ class ComparisonDock(QWidget):
                 BlockType.HEADING_3,
             )
         )
+        uncertain_suffix = (
+            f" · {len(self._uncertain_spans)} từ cần kiểm tra" if has_uncertain else ""
+        )
         self.structure_label.setText(
             f"Bố cục: {_column_count(page.blocks)} cột · "
             f"{counts[BlockType.TEXT]} đoạn · "
             f"{heading_count} tiêu đề · "
             f"{counts[BlockType.CAPTION]} chú thích · "
             f"{len(page.tables)} bảng · {counts[BlockType.IMAGE]} hình"
+            f"{uncertain_suffix}"
         )
         self.structure_panel.show()
 

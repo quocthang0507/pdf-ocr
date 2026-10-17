@@ -63,13 +63,29 @@ class _TableHTMLParser(HTMLParser):
 @register_engine(
     "paddle",
     "PaddleOCR",
-    "Nhận diện nhanh DBNet/SVTR và phát hiện cấu trúc bảng.",
+    "Nhận diện nhanh PP-OCRv4/v5/v6, PP-StructureV3 và PaddleOCR-VL.",
+    supports_handwriting=True,
     supports_tables=True,
 )
 class PaddleOCREngine(BaseOCREngine):
     CONFIG_SCHEMA = {
         "lang": ConfigField(
             "vi", lambda value: isinstance(value, str) and bool(value.strip())
+        ),
+        "ocr_version": ConfigField(
+            "",
+            lambda value: isinstance(value, str)
+            and value in {"", "PP-OCRv3", "PP-OCRv4", "PP-OCRv5", "PP-OCRv6"},
+        ),
+        "model_tier": ConfigField(
+            "",
+            lambda value: isinstance(value, str)
+            and value in {"", "mobile", "server", "tiny"},
+        ),
+        "pipeline_mode": ConfigField(
+            "",
+            lambda value: isinstance(value, str)
+            and value in {"", "standard", "pp_structure_v3", "paddleocr_vl"},
         ),
         "device": ConfigField(
             "cpu",
@@ -83,6 +99,14 @@ class PaddleOCREngine(BaseOCREngine):
             and 0 <= value <= 1,
         ),
         "use_tables": ConfigField(True, lambda value: type(value) is bool),
+        "rec_model_dir": ConfigField(
+            "",
+            lambda value: value is None or isinstance(value, str),
+        ),
+        "det_model_dir": ConfigField(
+            "",
+            lambda value: value is None or isinstance(value, str),
+        ),
     }
 
     def __init__(
@@ -92,6 +116,7 @@ class PaddleOCREngine(BaseOCREngine):
     ) -> None:
         self._ocr: Any | None = None
         self._table_model: Any | None = None
+        self._vl_model: Any | None = None
         super().__init__(weights_manager, config)
 
     @staticmethod
@@ -125,40 +150,76 @@ class PaddleOCREngine(BaseOCREngine):
         if not self._uses_gpu():
             self._ensure_cpu_compatibility()
         paddleocr = import_module("paddleocr")
-        legacy_options = {
+        mode = str(self._config.get("pipeline_mode") or "").strip()
+        if mode == "paddleocr_vl" and hasattr(paddleocr, "PaddleOCRVL"):
+            vl_cls = paddleocr.PaddleOCRVL
+            vl_opts: dict[str, object] = {"device": self._paddle_device()}
+            self._vl_model = vl_cls(**_supported_options(vl_cls, vl_opts))
+            return
+        legacy_options, current_options = self._build_ocr_options()
+        factory = paddleocr.PaddleOCR
+        signature = inspect.signature(factory).parameters
+        is_current = "use_doc_orientation_classify" in signature
+        options = current_options if is_current else legacy_options
+        self._ocr = factory(**_supported_options(factory, options))
+        if bool(self._config["use_tables"]) or mode == "pp_structure_v3":
+            self._load_table_model(paddleocr, mode == "pp_structure_v3")
+
+    def _build_ocr_options(self) -> tuple[dict[str, object], dict[str, object]]:
+        legacy: dict[str, object] = {
             "lang": self._config["lang"],
             "use_angle_cls": True,
             "det_db_thresh": self._config["det_db_thresh"],
             "use_gpu": self._uses_gpu(),
         }
-        current_options = {
+        current: dict[str, object] = {
             "lang": self._config["lang"],
             "device": self._paddle_device(),
             "use_doc_orientation_classify": True,
             "use_textline_orientation": True,
             "text_det_thresh": self._config["det_db_thresh"],
         }
-        factory = paddleocr.PaddleOCR
-        signature = inspect.signature(factory).parameters
-        is_current = "use_doc_orientation_classify" in signature
-        options = current_options if is_current else legacy_options
-        self._ocr = factory(**_supported_options(factory, options))
-        if bool(self._config["use_tables"]):
-            table_factory = getattr(paddleocr, "PPStructureV3", None)
-            is_current_table = table_factory is not None
-            table_factory = table_factory or getattr(paddleocr, "PPStructure", None)
-            if table_factory is not None:
-                table_options: dict[str, object] = (
-                    {"device": self._paddle_device(), "use_table_recognition": True}
-                    if is_current_table
-                    else {"use_gpu": self._uses_gpu()}
-                )
-                try:
-                    self._table_model = table_factory(
-                        **_supported_options(table_factory, table_options)
-                    )
-                except Exception:
-                    self._table_model = None
+        ocr_ver = str(self._config.get("ocr_version") or "").strip()
+        if ocr_ver:
+            legacy["ocr_version"] = ocr_ver
+            current["ocr_version"] = ocr_ver
+        tier = str(self._config.get("model_tier") or "").strip()
+        if tier:
+            ver_prefix = ocr_ver if ocr_ver in {"PP-OCRv4", "PP-OCRv5"} else "PP-OCRv5"
+            tier_tag = "server" if tier == "server" else "mobile"
+            current["text_detection_model_name"] = f"{ver_prefix}_{tier_tag}_det"
+            current["text_recognition_model_name"] = f"{ver_prefix}_{tier_tag}_rec"
+        rec_dir = str(self._config.get("rec_model_dir") or "").strip()
+        det_dir = str(self._config.get("det_model_dir") or "").strip()
+        if rec_dir:
+            legacy["rec_model_dir"] = rec_dir
+            current["text_recognition_model_dir"] = rec_dir
+        if det_dir:
+            legacy["det_model_dir"] = det_dir
+            current["text_detection_model_dir"] = det_dir
+        return legacy, current
+
+    def _load_table_model(self, paddleocr: Any, full_structure: bool) -> None:
+        table_factory = getattr(paddleocr, "PPStructureV3", None)
+        is_current_table = table_factory is not None
+        table_factory = table_factory or getattr(paddleocr, "PPStructure", None)
+        if table_factory is None:
+            return
+        table_options: dict[str, object] = (
+            {
+                "device": self._paddle_device(),
+                "use_table_recognition": True,
+                **({"use_formula_recognition": True} if full_structure else {}),
+            }
+            if is_current_table
+            else {"use_gpu": self._uses_gpu()}
+        )
+        try:
+            self._table_model = table_factory(
+                **_supported_options(table_factory, table_options)
+            )
+        except Exception:
+            self._table_model = None
 
     def _uses_gpu(self) -> bool:
         return str(self._config["device"]).startswith("cuda")
@@ -170,6 +231,15 @@ class PaddleOCREngine(BaseOCREngine):
         return device.replace("cuda", "gpu", 1)
 
     def _recognize(self, image: object, page_number: int) -> OCRPage:
+        if self._vl_model is not None:
+            raw_vl = (
+                self._vl_model.predict(image)
+                if hasattr(self._vl_model, "predict")
+                else self._vl_model(image)
+            )
+            lines = self._parse_text_results(raw_vl)
+            tables = self._tables_from_raw(raw_vl)
+            return build_page(image, page_number, lines, tables)
         if self._ocr is None:
             raise RuntimeError("PaddleOCR model is unavailable.")
         if hasattr(self._ocr, "predict"):
@@ -188,8 +258,12 @@ class PaddleOCREngine(BaseOCREngine):
             if hasattr(self._table_model, "predict")
             else self._table_model(image)
         )
+        return self._tables_from_raw(raw)
+
+    def _tables_from_raw(self, raw: object) -> tuple[OCRTable, ...]:
         tables: list[OCRTable] = []
-        for item in raw or ():
+        items = raw if isinstance(raw, (tuple, list)) else ()
+        for item in items:
             payload = self._as_dict(item)
             tables.extend(self._tables_from_payload(payload))
         return tuple(tables)
@@ -342,3 +416,4 @@ class PaddleOCREngine(BaseOCREngine):
     def _unload_model(self) -> None:
         self._ocr = None
         self._table_model = None
+        self._vl_model = None

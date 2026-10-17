@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import re
 from collections.abc import Callable, Sequence
 from pathlib import Path
 from typing import TypeVar
@@ -28,12 +27,15 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.constants import ICON_COLORS, BlockType
+from src.config import ConfigManager
+from src.constants import ICON_COLORS
 from src.core.document_loader import SUPPORTED_EXTENSIONS
 from src.core.exceptions import DocumentLoadError, PDFOCRError
-from src.core.layout_analyzer import LayoutAnalyzer
-from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRTable, OCRWord
-from src.core.transcript import apply_transcript
+from src.core.models import BoundingBox, OCRPage, OCRTable
+from src.core.transcript import (
+    apply_transcript,
+)
+from src.core.transcript import reconstruct_paragraphs as _reconstruct_paragraphs
 from src.engines.engine_registry import EngineRegistry
 from src.exporters.exporter_registry import ExporterRegistry
 from src.gui.components.comparison_dock import ComparisonDock
@@ -45,6 +47,7 @@ from src.gui.components.menu_bar import (
     create_actions,
     retranslate_actions,
 )
+from src.gui.components.navigation_dock import NavigationDock
 from src.gui.components.notifications import NotificationCenter, Severity
 from src.gui.components.settings_dock import SettingsDock
 from src.gui.components.status_bar import BatchStatusBar
@@ -55,6 +58,7 @@ from src.gui.document_session import DocumentSession
 from src.gui.i18n import translate_menu
 from src.gui.styles.style_manager import StyleManager
 from src.services.pipeline_service import PageOptions, PipelineService
+from src.services.weights_manager import ModelWeightsManager
 from src.utils.logger import logger
 from src.workers.batch_manager import BatchManager
 from src.workers.export_worker import (
@@ -65,6 +69,7 @@ from src.workers.export_worker import (
 from src.workers.region_worker import (
     RegionOCRResult,
     RegionWorker,
+    merge_region_tables,
     native_region_text,
 )
 from src.workers.signals import BatchProgress, PageTask
@@ -92,11 +97,7 @@ def _is_supported(path: Path) -> bool:
 
 
 class MainWindow(QMainWindow):
-    """Stateful application shell; document work is published, never performed here.
-
-    Every command runs through `guarded`, so a core failure becomes a dialog
-    and a log entry instead of an unhandled exception in the Qt event loop.
-    """
+    """Stateful application shell; document work is published, never performed here."""
 
     document_opened = Signal(str)
     folder_opened = Signal(str)
@@ -121,7 +122,7 @@ class MainWindow(QMainWindow):
         self._settings = settings or QSettings(ORGANIZATION_NAME, APPLICATION_NAME)
         self._current_path: Path | None = None
         self._options: dict[str, object] = {}
-        self._pipeline = pipeline or PipelineService()
+        self._pipeline = pipeline or _default_pipeline()
         self._batch: BatchDialog | None = None
         self._batch_controls_wired = False
         self._last_region: BoundingBox | None = None
@@ -145,6 +146,9 @@ class MainWindow(QMainWindow):
         self.setStatusBar(self.batch_status)
         self.notifications = NotificationCenter(self)
         self.setCentralWidget(self._create_document_view())
+        self.addDockWidget(
+            Qt.DockWidgetArea.LeftDockWidgetArea, self._create_navigation_dock()
+        )
         self.addDockWidget(
             Qt.DockWidgetArea.RightDockWidgetArea, self._create_options_dock()
         )
@@ -196,6 +200,7 @@ class MainWindow(QMainWindow):
             self._session.close()
         self._sessions[session.path] = session
         self._session = session
+        self.navigation_dock.set_session(session)
         self._show_current_page()
 
     @property
@@ -214,6 +219,13 @@ class MainWindow(QMainWindow):
         self._session.go_to(page_number)
         self.guarded(self._show_current_page, title="Xem trang")
 
+    def rotate_current_page(self, delta_degrees: int) -> None:
+        """Rotate the currently displayed page and refresh the view."""
+        if self._session is None:
+            return
+        self._session.rotate_page(self._session.current_page, delta_degrees)
+        self.guarded(self._show_current_page, title="Xoay trang")
+
     def _show_current_page(self) -> None:
         session = self._session
         if session is None:
@@ -223,14 +235,12 @@ class MainWindow(QMainWindow):
         if result is None:
             dpi = self._option_number("dpi", DEFAULT_DPI)
             image = session.image(number, dpi=dpi)
-            # A text-based page reads well before OCR; show its own text.
             native = session.native_text(number, dpi=dpi)
             self.comparison.set_image(image, text=_reconstruct_paragraphs(native))
         else:
             dpi = result.dpi
             image = session.image_for(result)
             self.comparison.set_page(result, image)
-        # Remembered so a region drawn on screen maps back to the same pixels.
         self._displayed = (image, dpi)
         self._refresh_page_controls()
 
@@ -239,6 +249,7 @@ class MainWindow(QMainWindow):
         total = session.page_count if session is not None else 0
         current = session.current_page if session is not None else 0
         self.comparison.set_page_info(current, total)
+        self.navigation_dock.refresh_status()
         self.command_actions["previous_page"].setEnabled(current > 1)
         self.command_actions["next_page"].setEnabled(0 < current < total)
         self.command_actions["edit_table"].setEnabled(self.comparison.table_count() > 0)
@@ -538,6 +549,7 @@ class MainWindow(QMainWindow):
             engine_id,
             self._option_text("device", "cpu"),
             config=config,
+            weights_manager=getattr(self._pipeline, "weights_manager", None),
             source_path=str(session.path),
             page_number=session.current_page,
             preferred_text=text if text and not force_model else "",
@@ -594,34 +606,10 @@ class MainWindow(QMainWindow):
         page = session.result(result.page_number)
         if page is None:
             return
-        tables = list(page.tables)
-        blocks = list(page.blocks)
-        added = 0
-        for table in result.page.tables:
-            if any(_same_table_region(table, existing) for existing in tables):
-                continue
-            tables.append(table)
-            row_lines = tuple(
-                OCRLine(
-                    words=(OCRWord(" | ".join(row), table.bbox),),
-                    bbox=table.bbox,
-                )
-                for row in table.rows
-                if any(cell.strip() for cell in row)
-            )
-            blocks.append(
-                OCRBlock(
-                    lines=row_lines,
-                    bbox=table.bbox,
-                    block_type=BlockType.TABLE,
-                    reading_order=len(blocks),
-                )
-            )
-            added += 1
+        updated, added = merge_region_tables(page, result.page.tables)
         if not added:
             return
-        updated = page.with_updates(blocks=tuple(blocks), tables=tuple(tables))
-        session.store(LayoutAnalyzer().analyze(updated, merge_paragraphs=False))
+        session.store(updated)
         if session is self._session:
             self.guarded(self._show_current_page, title="Hiển thị bảng vùng chọn")
         self.notifications.notify(
@@ -641,6 +629,17 @@ class MainWindow(QMainWindow):
         if self._require_document():
             self.ocr_requested.emit(str(self._current_path))
             self.run_batch([str(self._current_path)])
+
+    def request_ocr_page(self, page_number: int = 0) -> None:
+        """Run OCR on a single page (defaults to the current page) in the background."""
+        if not self._require_document() or self._session is None:
+            return
+        target = page_number if page_number >= 1 else self._session.current_page
+        self.ocr_requested.emit(str(self._current_path))
+        self.guarded(
+            lambda: self._run_batch([str(self._current_path)], single_page=target),
+            title="OCR trang",
+        )
 
     @property
     def batch_dialog(self) -> BatchDialog | None:
@@ -677,7 +676,9 @@ class MainWindow(QMainWindow):
         session.store(result.with_updates(tables=tuple(tables)))
         self.notifications.notify("Đã cập nhật bảng biểu.", Severity.SUCCESS)
 
-    def _run_batch(self, documents: Sequence[str]) -> None:
+    def _run_batch(
+        self, documents: Sequence[str], *, single_page: int | None = None
+    ) -> None:
         engine_id = self._option_text("engine_id", DEFAULT_ENGINE_ID)
         session = self._pipeline.open_page_session(
             engine_id=engine_id,
@@ -687,11 +688,11 @@ class MainWindow(QMainWindow):
             page_options=PageOptions.from_mapping(self._options),
         )
         manager = BatchManager(
-            lambda task: session.recognise(task.document_path, task.page_number),
-            page_counter=session.page_count,
+            lambda task: session.recognise(
+                task.document_path, single_page or task.page_number
+            ),
+            page_counter=(lambda _p: 1) if single_page else session.page_count,
         )
-        # Kept off-screen: progress is shown in the bottom status bar instead
-        # of a popup, so the document underneath stays visible while it runs.
         dialog = BatchDialog(manager, documents, self)
         dialog.page_ready.connect(self._on_page_recognised)
         dialog.batch_finished.connect(lambda _progress: session.close())
@@ -726,12 +727,9 @@ class MainWindow(QMainWindow):
         return value
 
     def _wire_batch_controls(self, manager: BatchManager) -> None:
-        # Disconnect the previous run's controls first, or pause/cancel would
-        # keep reaching every manager that has ever run in this window.
         if self._batch_controls_wired:
             self._disconnect_all(self.batch_status.pause_toggled)
             self._disconnect_all(self.batch_status.cancel_requested)
-        # Bound methods, not lambdas: Qt drops them when the window is destroyed.
         manager.progress.connect(self.batch_status.show_progress)
         manager.finished.connect(self._on_batch_finished)
         manager.cancelled.connect(self._on_batch_stopped)
@@ -769,8 +767,11 @@ class MainWindow(QMainWindow):
             session = DocumentSession(path)
             self._sessions[path] = session
         session.store(page)
-        if session is self._session and page.page_number == session.current_page:
-            self.guarded(self._show_current_page, title="Hiển thị kết quả")
+        if session is self._session:
+            if page.page_number == session.current_page:
+                self.guarded(self._show_current_page, title="Hiển thị kết quả")
+            else:
+                self.navigation_dock.refresh_status()
 
     def _on_batch_finished(self, progress: BatchProgress) -> None:
         self.batch_status.set_running(False)
@@ -820,7 +821,6 @@ class MainWindow(QMainWindow):
         worker = ExportWorker(session.document(), format_id, destination)
         worker.signals.finished.connect(self._on_export_finished)
         worker.signals.failed.connect(self._on_export_failed)
-        # The signals object must outlive the runnable, which Qt deletes.
         self._job_signals.add(worker.signals)
         self.command_actions["export"].setEnabled(False)
         self._jobs.start(worker)
@@ -860,6 +860,7 @@ class MainWindow(QMainWindow):
         self.zoom_requested.connect(self.comparison.apply_zoom)
         self.comparison.region_ocr_requested.connect(self.region_ocr_requested)
         self.comparison.page_change_requested.connect(self.go_to_page)
+        self.comparison.page_rotate_requested.connect(self.rotate_current_page)
         self.comparison.region_mode_cancelled.connect(
             lambda: self.set_region_mode(False)
         )
@@ -868,9 +869,21 @@ class MainWindow(QMainWindow):
         self.comparison.region_rerun_requested.connect(self.rerun_region)
         return self.comparison
 
+    def _create_navigation_dock(self) -> QDockWidget:
+        """Build the left navigation and document info dock."""
+        self.navigation_dock = NavigationDock(self)
+        self.navigation_dock.page_selected.connect(self.go_to_page)
+        self.navigation_dock.ocr_page_requested.connect(self.request_ocr_page)
+        container = QDockWidget("Điều hướng & Tài liệu", self)
+        container.setObjectName("navigation_dock_container")
+        container.setWidget(self.navigation_dock)
+        return container
+
     def _create_options_dock(self) -> QDockWidget:
         """Expose the per-run OCR options beside the document."""
-        self.settings_dock = SettingsDock(self)
+        self.settings_dock = SettingsDock(
+            self, weights_manager=getattr(self._pipeline, "weights_manager", None)
+        )
         self.settings_dock.options_changed.connect(self._remember_options)
         container = QDockWidget("Tùy chọn nhận diện", self)
         container.setObjectName("options_dock")
@@ -896,12 +909,35 @@ class MainWindow(QMainWindow):
         """Show the settings dialog and apply the new weights folder at once."""
         dialog = SettingsDialog(parent=self)
         dialog.weights_directory_changed.connect(self._apply_weights_directory)
+        dialog.model_imported.connect(self._on_model_imported)
         dialog.language_changed.connect(lambda _code: self.retranslate())
         dialog.theme_changed.connect(self.apply_theme_colors)
         dialog.exec()
 
+    def _on_model_imported(self, engine_id: str, path: str) -> None:
+        self.settings_dock.refresh_engine_parameters(
+            getattr(self._pipeline, "weights_manager", None)
+        )
+        self.settings_dock.add_custom_model_choice(engine_id, path)
+        self.notifications.notify(
+            f"Đã nhập mô hình {Path(path).name} cho {self._engine_name(engine_id)}.",
+            Severity.SUCCESS,
+        )
+
     def _apply_weights_directory(self, directory: str) -> None:
+        manager = ModelWeightsManager(directory)
+        if hasattr(self._pipeline, "set_weights_manager"):
+            self._pipeline.set_weights_manager(manager)
+        self.settings_dock.refresh_engine_parameters(manager)
         self.statusBar().showMessage(f"Đã áp dụng thư mục weights: {directory}")
+
+
+def _default_pipeline() -> PipelineService:
+    try:
+        weights_dir = ConfigManager().load().weights_dir
+        return PipelineService(weights_manager=ModelWeightsManager(weights_dir))
+    except PDFOCRError:
+        return PipelineService()
 
 
 def _dropped_documents(mime: QMimeData) -> tuple[Path, ...]:
@@ -909,62 +945,3 @@ def _dropped_documents(mime: QMimeData) -> tuple[Path, ...]:
         return ()
     candidates = (Path(url.toLocalFile()) for url in mime.urls() if url.isLocalFile())
     return tuple(path for path in candidates if _is_supported(path))
-
-
-def _same_table_region(first: OCRTable, second: OCRTable) -> bool:
-    """Treat mostly overlapping table boxes as an existing detection."""
-    left = max(first.bbox.x1, second.bbox.x1)
-    top = max(first.bbox.y1, second.bbox.y1)
-    right = min(first.bbox.x2, second.bbox.x2)
-    bottom = min(first.bbox.y2, second.bbox.y2)
-    intersection = max(0.0, right - left) * max(0.0, bottom - top)
-    smaller_area = min(
-        first.bbox.width * first.bbox.height,
-        second.bbox.width * second.bbox.height,
-    )
-    return smaller_area > 0 and intersection / smaller_area >= 0.75
-
-
-_PARAGRAPH_LIST_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
-
-
-def _reconstruct_paragraphs(raw_text: str) -> str:
-    """Merge broken lines within paragraphs while preserving true paragraph breaks."""
-    if not raw_text:
-        return ""
-    lines = raw_text.splitlines()
-    paragraphs: list[str] = []
-    current_para: list[str] = []
-
-    for line in lines:
-        stripped = line.strip()
-        if not stripped:
-            if current_para:
-                paragraphs.append(_join_paragraph_lines(current_para))
-                current_para = []
-            continue
-        current_para.append(stripped)
-
-    if current_para:
-        paragraphs.append(_join_paragraph_lines(current_para))
-
-    return "\n\n".join(paragraphs)
-
-
-def _join_paragraph_lines(lines: list[str]) -> str:
-    if not lines:
-        return ""
-    if len(lines) == 1:
-        return lines[0]
-    parts: list[str] = [lines[0]]
-    for idx in range(1, len(lines)):
-        prev = lines[idx - 1]
-        curr = lines[idx]
-        if prev.endswith(":") or bool(_PARAGRAPH_LIST_REGEX.match(curr)):
-            parts.append("\n" + curr)
-        elif prev.endswith("-") and not prev.endswith(" -"):
-            parts[-1] = parts[-1][:-1]
-            parts.append(curr)
-        else:
-            parts.append(" " + curr)
-    return "".join(parts)

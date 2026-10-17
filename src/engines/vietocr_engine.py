@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from importlib import import_module
+from pathlib import Path
 from typing import Any
 
 from src.core.models import OCRPage
@@ -26,17 +27,34 @@ def _device(value: object) -> bool:
     )
 
 
+_BUILTIN_ARCHITECTURES = {"vgg_transformer", "vgg_seq2seq", "resnet_transformer"}
+
+
+def _valid_architecture(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    return (
+        value in _BUILTIN_ARCHITECTURES
+        or value.lower().endswith(".pth")
+        or Path(value).is_file()
+    )
+
+
 @register_engine(
     "vietocr",
     "VietOCR",
-    "Nhận diện chuyên sâu văn bản in tiếng Việt.",
+    "Nhận diện chuyên sâu văn bản tiếng Việt (VGG/ResNet + Transformer/Seq2Seq).",
 )
 class VietOCREngine(BaseOCREngine):
     CONFIG_SCHEMA = {
-        "architecture": ConfigField(
+        "architecture": ConfigField("vgg_transformer", _valid_architecture),
+        "custom_weights_path": ConfigField(
+            "",
+            lambda value: value is None or isinstance(value, (str, Path)),
+        ),
+        "base_architecture": ConfigField(
             "vgg_transformer",
-            lambda value: isinstance(value, str)
-            and value in {"vgg_transformer", "vgg_seq2seq"},
+            lambda value: isinstance(value, str) and value in _BUILTIN_ARCHITECTURES,
         ),
         "device": ConfigField("cpu", _device),
     }
@@ -53,12 +71,43 @@ class VietOCREngine(BaseOCREngine):
         config_module = import_module("vietocr.tool.config")
         predictor_module = import_module("vietocr.tool.predictor")
         architecture = str(self._config["architecture"])
-        model_config = config_module.Cfg.load_config_from_name(architecture)
-        model_config["weights"] = str(self.weights_dir / f"{architecture}.pth")
+        custom_path = self._config.get("custom_weights_path")
+        base_arch, weights_path = self._resolve_weights(architecture, custom_path)
+        try:
+            model_config = config_module.Cfg.load_config_from_name(base_arch)
+        except Exception:
+            model_config = config_module.Cfg.load_config_from_name("vgg_transformer")
+            if base_arch == "resnet_transformer":
+                model_config["backbone"] = "resnet50"
+        model_config["weights"] = str(weights_path)
         model_config["device"] = self._resolved_device()
         cnn_config = model_config.setdefault("cnn", {})
         cnn_config["pretrained"] = False
         self._predictor = predictor_module.Predictor(model_config)
+
+    def _resolve_weights(
+        self, architecture: str, custom_path: object
+    ) -> tuple[str, Path]:
+        base_arch = str(self._config.get("base_architecture") or "vgg_transformer")
+        if custom_path and str(custom_path).strip():
+            path = Path(str(custom_path)).expanduser()
+            if not path.is_absolute() and (self.weights_dir / path).is_file():
+                path = self.weights_dir / path
+            if "seq2seq" in path.name.lower():
+                base_arch = "vgg_seq2seq"
+            elif "resnet" in path.name.lower():
+                base_arch = "resnet_transformer"
+            return base_arch, path
+        if architecture in _BUILTIN_ARCHITECTURES:
+            return architecture, self.weights_dir / f"{architecture}.pth"
+        path = Path(architecture).expanduser()
+        if not path.is_absolute() and (self.weights_dir / path).is_file():
+            path = self.weights_dir / path
+        if "seq2seq" in path.name.lower():
+            base_arch = "vgg_seq2seq"
+        elif "resnet" in path.name.lower():
+            base_arch = "resnet_transformer"
+        return base_arch, path
 
     def _resolved_device(self) -> str:
         device = str(self._config["device"])

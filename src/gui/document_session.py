@@ -12,6 +12,7 @@ import numpy as np
 from src.core.document_loader import DocumentLoader, LoadedPage
 from src.core.exceptions import DocumentLoadError, PDFOCRError
 from src.core.models import OCRDocument, OCRPage
+from src.core.transcript import render_transcript
 
 IMAGE_CACHE_SIZE = 2
 
@@ -34,6 +35,7 @@ class DocumentSession:
         self._loader: DocumentLoader | None = None
         self._pages: OrderedDict[tuple[int, int], LoadedPage] = OrderedDict()
         self._results: dict[int, OCRPage] = {}
+        self._rotations: dict[int, int] = {}
         self._current = 1
 
     # -- document ---------------------------------------------------------
@@ -56,6 +58,12 @@ class DocumentSession:
     def current_page(self) -> int:
         return self._current
 
+    def file_size_bytes(self) -> int:
+        try:
+            return int(self.path.stat().st_size)
+        except OSError:
+            return 0
+
     def go_to(self, page_number: int) -> int:
         """Move to a page, clamped to the document so a bad jump is harmless."""
         self._current = max(1, min(page_number, self.page_count))
@@ -63,6 +71,65 @@ class DocumentSession:
 
     def step(self, delta: int) -> int:
         return self.go_to(self._current + delta)
+
+    def page_rotation(self, page_number: int) -> int:
+        return self._rotations.get(page_number, 0)
+
+    def rotate_page(self, page_number: int, delta_degrees: int) -> int:
+        """Rotate a page in 90-degree increments and return the new angle."""
+        angle = (self._rotations.get(page_number, 0) + delta_degrees) % 360
+        if angle == 0:
+            self._rotations.pop(page_number, None)
+        else:
+            self._rotations[page_number] = angle
+        return angle
+
+    def outline(self) -> tuple[tuple[int, str, int], ...]:
+        """Extract PDF bookmarks as (level, title, page_number) tuples."""
+        loader = self._open()
+        if not loader.is_pdf:
+            return ()
+        try:
+            import pymupdf
+
+            with pymupdf.open(str(self.path)) as pdf:
+                toc = pdf.get_toc(simple=True)
+            return tuple(
+                (int(item[0]), str(item[1]).strip(), max(1, int(item[2])))
+                for item in toc
+                if len(item) >= 3 and str(item[1]).strip()
+            )
+        except Exception:
+            return ()
+
+    def search_text(self, query: str) -> list[tuple[int, str]]:
+        """Search all pages across recognised OCR results and native PDF text."""
+        needle = query.strip().lower()
+        if not needle:
+            return []
+        matches: list[tuple[int, str]] = []
+        total = self.page_count
+        for number in range(1, total + 1):
+            result = self._results.get(number)
+            text = (
+                render_transcript(result)
+                if result is not None
+                else self._page_raw_text(number)
+            )
+            lower = text.lower()
+            pos = lower.find(needle)
+            if pos >= 0:
+                start = max(0, pos - 24)
+                end = min(len(text), pos + len(needle) + 36)
+                snippet = " ".join(text[start:end].split())
+                matches.append((number, snippet))
+        return matches
+
+    def _page_raw_text(self, page_number: int) -> str:
+        try:
+            return self.native_text(page_number, dpi=72)
+        except Exception:
+            return ""
 
     def close(self) -> None:
         """Release the file and the rendered pages; results are kept."""
@@ -92,7 +159,8 @@ class DocumentSession:
         return loaded
 
     def image(self, page_number: int, *, dpi: int) -> np.ndarray:
-        return self._loaded(page_number, dpi).image
+        raw = self._loaded(page_number, dpi).image
+        return _rotate_image(raw, self.page_rotation(page_number))
 
     def native_text(self, page_number: int, *, dpi: int) -> str:
         """The page's own text layer, so a text-based page reads before OCR."""
@@ -128,3 +196,13 @@ class DocumentSession:
         """Every recognised page in reading order, ready for an exporter."""
         pages = tuple(self._results[number] for number in self.recognised_pages())
         return OCRDocument(pages, source_path=str(self.path), title=self.path.stem)
+
+
+def _rotate_image(image: np.ndarray, angle: int) -> np.ndarray:
+    if angle == 90:
+        return cv2.rotate(image, cv2.ROTATE_90_CLOCKWISE)
+    if angle == 180:
+        return cv2.rotate(image, cv2.ROTATE_180)
+    if angle == 270:
+        return cv2.rotate(image, cv2.ROTATE_90_COUNTERCLOCKWISE)
+    return image

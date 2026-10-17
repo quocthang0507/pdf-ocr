@@ -1,6 +1,8 @@
 """Built-in OCR providers, registered without importing heavy AI libraries."""
 
 from src.engines.base_engine import BaseOCREngine, ConfigField
+from src.engines.chandra_engine import ChandraOCREngine
+from src.engines.dots_ocr_engine import DotsOCREngine
 from src.engines.easyocr_engine import EasyOCREngine
 from src.engines.engine_registry import (
     EngineMetadata,
@@ -15,7 +17,9 @@ from src.engines.vietocr_engine import VietOCREngine
 
 __all__ = [
     "BaseOCREngine",
+    "ChandraOCREngine",
     "ConfigField",
+    "DotsOCREngine",
     "EasyOCREngine",
     "EngineMetadata",
     "EngineRegistry",

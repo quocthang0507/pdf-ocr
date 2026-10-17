@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -10,11 +10,20 @@ import numpy as np
 import pymupdf
 from PySide6.QtCore import QObject, QRunnable, Signal
 
+from src.constants import BlockType
 from src.core.exceptions import OCREngineError, PDFOCRError
 from src.core.layout_analyzer import LayoutAnalyzer
-from src.core.models import BoundingBox, OCRPage
+from src.core.models import (
+    BoundingBox,
+    OCRBlock,
+    OCRLine,
+    OCRPage,
+    OCRTable,
+    OCRWord,
+)
 from src.core.transcript import render_transcript
 from src.engines.engine_registry import engine_session
+from src.services.weights_manager import ModelWeightsManager
 from src.utils.logger import logger
 
 _POINTS_PER_INCH = 72
@@ -74,6 +83,7 @@ class RegionWorker(QRunnable):
         device: str,
         *,
         config: Mapping[str, object] | None = None,
+        weights_manager: ModelWeightsManager | None = None,
         source_path: str = "",
         page_number: int = 1,
         preferred_text: str = "",
@@ -93,6 +103,7 @@ class RegionWorker(QRunnable):
         self._engine_id = engine_id
         self._device = device
         self._config = dict(config or {})
+        self._weights_manager = weights_manager
         self._source_path = source_path
         self._page_number = page_number
         self._preferred_text = preferred_text
@@ -105,7 +116,10 @@ class RegionWorker(QRunnable):
             if self._crop.size == 0:
                 raise OCREngineError("Vùng chọn nằm ngoài trang tài liệu.")
             with engine_session(
-                self._engine_id, device=self._device, config=self._config
+                self._engine_id,
+                device=self._device,
+                config=self._config,
+                weights_manager=self._weights_manager,
             ) as engine:
                 page = engine.recognize(self._crop, page_number=self._page_number)
         except PDFOCRError as error:
@@ -154,3 +168,51 @@ def _translate_box(box: BoundingBox, left: int, top: int) -> BoundingBox:
         box.y2 + top,
         polygon,
     )
+
+
+def _same_table_region(first: OCRTable, second: OCRTable) -> bool:
+    """Treat mostly overlapping table boxes as an existing detection."""
+    left = max(first.bbox.x1, second.bbox.x1)
+    top = max(first.bbox.y1, second.bbox.y1)
+    right = min(first.bbox.x2, second.bbox.x2)
+    bottom = min(first.bbox.y2, second.bbox.y2)
+    intersection = max(0.0, right - left) * max(0.0, bottom - top)
+    smaller_area = min(
+        first.bbox.width * first.bbox.height,
+        second.bbox.width * second.bbox.height,
+    )
+    return smaller_area > 0 and intersection / smaller_area >= 0.75
+
+
+def merge_region_tables(
+    page: OCRPage, region_tables: Sequence[OCRTable]
+) -> tuple[OCRPage, int]:
+    """Append newly discovered region tables and their block lines to a page."""
+    tables = list(page.tables)
+    blocks = list(page.blocks)
+    added = 0
+    for table in region_tables:
+        if any(_same_table_region(table, existing) for existing in tables):
+            continue
+        tables.append(table)
+        row_lines = tuple(
+            OCRLine(
+                words=(OCRWord(" | ".join(row), table.bbox),),
+                bbox=table.bbox,
+            )
+            for row in table.rows
+            if any(cell.strip() for cell in row)
+        )
+        blocks.append(
+            OCRBlock(
+                lines=row_lines,
+                bbox=table.bbox,
+                block_type=BlockType.TABLE,
+                reading_order=len(blocks),
+            )
+        )
+        added += 1
+    if not added:
+        return page, 0
+    updated = page.with_updates(blocks=tuple(blocks), tables=tuple(tables))
+    return LayoutAnalyzer().analyze(updated, merge_paragraphs=False), added

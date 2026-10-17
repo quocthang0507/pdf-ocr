@@ -38,6 +38,18 @@ class EasyOCREngine(BaseOCREngine):
             5, lambda value: type(value) is int and 1 <= value <= 100
         ),
         "allow_download": ConfigField(False, lambda value: type(value) is bool),
+        "recog_network": ConfigField(
+            "standard",
+            lambda value: isinstance(value, str),
+        ),
+        "detect_network": ConfigField(
+            "",
+            lambda value: isinstance(value, str) and value in {"", "craft", "dbnet18"},
+        ),
+        "user_network_directory": ConfigField(
+            "",
+            lambda value: value is None or isinstance(value, str),
+        ),
     }
 
     def __init__(
@@ -55,12 +67,25 @@ class EasyOCREngine(BaseOCREngine):
         if device.startswith("cuda:"):
             gpu = device
         langs = cast(Sequence[str], self._config["langs"])
+        extra: dict[str, object] = {}
+        recog_net = str(self._config.get("recog_network") or "standard").strip()
+        detect_net = str(self._config.get("detect_network") or "").strip()
+        user_net_dir = str(self._config.get("user_network_directory") or "").strip()
+        if recog_net and recog_net != "standard":
+            extra["recog_network"] = recog_net
+            if recog_net not in {"latin_g2", "english_g2", "latin_g1", "zh_sim_g2"}:
+                extra["user_network_directory"] = user_net_dir or str(self.weights_dir)
+        elif user_net_dir:
+            extra["user_network_directory"] = user_net_dir
+        if detect_net:
+            extra["detect_network"] = detect_net
         self._reader = easyocr.Reader(
             list(langs),
             gpu=gpu,
             model_storage_directory=str(self.weights_dir),
             download_enabled=bool(self._config["allow_download"]),
             verbose=False,
+            **extra,
         )
 
     def _recognize(self, image: object, page_number: int) -> OCRPage:

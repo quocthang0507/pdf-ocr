@@ -144,7 +144,9 @@ def test_region_lines_are_joined_into_one_paragraph(qtbot) -> None:
 
         def _recognize(self, image: object, page_number: int) -> OCRPage:
             blocks = []
-            for index, text in enumerate(("Điều 1. Công nhận danh sách", "học viên", "kèm Quyết định này.")):
+            for index, text in enumerate(
+                ("Điều 1. Công nhận danh sách", "học viên", "kèm Quyết định này.")
+            ):
                 box = BoundingBox(10, 10 + index * 30, 400, 30 + index * 30)
                 line = OCRLine(words=(OCRWord(text, box),), bbox=box)
                 blocks.append(OCRBlock(lines=(line,), bbox=box))

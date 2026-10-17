@@ -78,6 +78,7 @@ class SettingsDialog(QDialog):
     """Stateful settings editor; preferences are only written when accepted."""
 
     weights_directory_changed = Signal(str)
+    model_imported = Signal(str, str)
     theme_changed = Signal(str)
     language_changed = Signal(str)
     migration_finished = Signal(str)
@@ -112,10 +113,16 @@ class SettingsDialog(QDialog):
         self.progress_bar.hide()
         self.migrate_button = QPushButton("Di chuyển weights sang thư mục mới", self)
         self.migrate_button.setObjectName("migrate_button")
+        self.import_model_button = QPushButton("Nhập model từ tệp…", self)
+        self.import_model_button.setObjectName("import_model_button")
+        self.open_models_button = QPushButton("Mở thư mục models", self)
+        self.open_models_button.setObjectName("open_models_button")
         self._build_layout()
         self._load_preferences()
         self.weights_edit.textChanged.connect(self._refresh_free_space)
         self.migrate_button.clicked.connect(self.start_weights_migration)
+        self.import_model_button.clicked.connect(self.import_custom_model)
+        self.open_models_button.clicked.connect(self.open_models_directory)
 
     # -- layout -----------------------------------------------------------
 
@@ -126,7 +133,11 @@ class SettingsDialog(QDialog):
             _browse_row(self, self.weights_edit, self.browse_weights_dir)
         )
         storage_layout.addWidget(self.free_space_label)
-        storage_layout.addWidget(self.migrate_button)
+        actions_row = QHBoxLayout()
+        actions_row.addWidget(self.migrate_button)
+        actions_row.addWidget(self.import_model_button)
+        actions_row.addWidget(self.open_models_button)
+        storage_layout.addLayout(actions_row)
         storage_layout.addWidget(self.progress_bar)
 
         execution = QGroupBox("Thiết bị thực thi", self)
@@ -207,6 +218,43 @@ class SettingsDialog(QDialog):
 
     def _refresh_free_space(self) -> None:
         self.free_space_label.setText(_free_space_text(self.weights_edit.text()))
+
+    def _active_weights_manager(self) -> ModelWeightsManager:
+        raw = self.weights_edit.text().strip() or self._preferences.weights_dir
+        return ModelWeightsManager(raw)
+
+    def open_models_directory(self) -> None:
+        """Open the active models directory in the system file explorer."""
+        from PySide6.QtCore import QUrl
+        from PySide6.QtGui import QDesktopServices
+
+        try:
+            manager = self._active_weights_manager()
+        except PDFOCRError as error:
+            QMessageBox.warning(self, "Cài đặt", str(error))
+            return
+        QDesktopServices.openUrl(QUrl.fromLocalFile(str(manager.base_path)))
+
+    def import_custom_model(self, engine_id: str = "vietocr") -> Path | None:
+        """Copy a user-selected .pth model file into the managed weights folder."""
+        from PySide6.QtWidgets import QFileDialog
+
+        selected, _ = QFileDialog.getOpenFileName(
+            self,
+            "Chọn tệp trọng số mô hình",
+            str(Path.home()),
+            "Trọng số PyTorch (*.pth *.pt *.bin);;Tất cả tệp (*)",
+        )
+        if not selected:
+            return None
+        try:
+            manager = self._active_weights_manager()
+            target = manager.import_model_file(engine_id, selected)
+        except PDFOCRError as error:
+            QMessageBox.warning(self, "Nhập model", str(error))
+            return None
+        self.model_imported.emit(engine_id, str(target))
+        return target
 
     # -- weights migration ------------------------------------------------
 

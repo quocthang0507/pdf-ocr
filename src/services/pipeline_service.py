@@ -64,6 +64,7 @@ class PageOptions:
     detect_tables: bool = True
     reading_order: bool = True
     merge_paragraphs: bool = True
+    force_ocr: bool = False
 
     @classmethod
     def from_mapping(cls, options: Mapping[str, object]) -> PageOptions:
@@ -75,15 +76,16 @@ class PageOptions:
             else None
         )
 
-        def flag(key: str) -> bool:
-            value = options.get(key, True)
-            return value if isinstance(value, bool) else True
+        def flag(key: str, default: bool = True) -> bool:
+            value = options.get(key, default)
+            return value if isinstance(value, bool) else default
 
         return cls(
             preprocessing=stages,
             detect_tables=flag("detect_tables"),
             reading_order=flag("reading_order"),
             merge_paragraphs=flag("merge_paragraphs"),
+            force_ocr=flag("force_ocr", False),
         )
 
 
@@ -202,6 +204,13 @@ class PipelineService:
     def postprocessor(self) -> Postprocessor:
         return self._postprocessor
 
+    @property
+    def weights_manager(self) -> ModelWeightsManager | None:
+        return self._weights_manager
+
+    def set_weights_manager(self, weights_manager: ModelWeightsManager) -> None:
+        self._weights_manager = weights_manager
+
     def open_page_session(
         self,
         *,
@@ -246,11 +255,13 @@ class PipelineService:
         options: PageOptions | None = None,
     ) -> OCRPage:
         """Recognise one page, taking the text layer when the page already has one."""
-        if document.pdf is None:
+        force_ocr = bool(options and options.force_ocr)
+        if document.pdf is None or force_ocr:
             loaded = document.loader.load_page(page_number, dpi)
-            return self._ocr_page(
+            recognized = self._ocr_page(
                 loaded, engine_ids, device, config, stack, engines, options
             )
+            return recognized.with_updates(page_type=PageType.SCANNED)
         page_type = document.page_types[page_number - 1]
         index = page_number - 1
         if page_type == PageType.TEXT_BASED:

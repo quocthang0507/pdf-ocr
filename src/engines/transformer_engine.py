@@ -2,6 +2,7 @@
 
 from collections.abc import Mapping
 from importlib import import_module
+from pathlib import Path
 from typing import Any, cast
 
 from src.core.models import OCRPage
@@ -18,9 +19,21 @@ from src.engines.result_builder import (
 from src.services.weights_manager import ModelWeightsManager
 
 _CHECKPOINTS = {
+    "microsoft/trocr-small-handwritten",
     "microsoft/trocr-base-handwritten",
+    "microsoft/trocr-large-handwritten",
+    "microsoft/trocr-small-printed",
     "microsoft/trocr-base-printed",
+    "microsoft/trocr-large-printed",
+    "microsoft/trocr-base-str",
+    "microsoft/trocr-large-str",
 }
+
+
+def _valid_checkpoint(value: object) -> bool:
+    if not isinstance(value, str) or not value.strip():
+        return False
+    return value in _CHECKPOINTS or "/" in value or Path(value).is_dir()
 
 
 @register_engine(
@@ -33,7 +46,7 @@ class TransformerOCREngine(BaseOCREngine):
     CONFIG_SCHEMA = {
         "checkpoint": ConfigField(
             "microsoft/trocr-base-handwritten",
-            lambda value: isinstance(value, str) and value in _CHECKPOINTS,
+            _valid_checkpoint,
         ),
         "device": ConfigField(
             "cpu",
@@ -64,9 +77,18 @@ class TransformerOCREngine(BaseOCREngine):
     def _load_model(self) -> None:
         transformers = import_module("transformers")
         checkpoint = str(self._config["checkpoint"])
+        candidate = Path(checkpoint).expanduser()
+        is_local = candidate.is_dir()
+        if not is_local and (self.weights_dir / checkpoint).is_dir():
+            candidate = self.weights_dir / checkpoint
+            checkpoint = str(candidate.resolve())
+            is_local = True
+        elif is_local:
+            checkpoint = str(candidate.resolve())
+
         options = {
             "cache_dir": str(self.weights_dir),
-            "local_files_only": not bool(self._config["allow_download"]),
+            "local_files_only": is_local or not bool(self._config["allow_download"]),
         }
         self._processor = transformers.TrOCRProcessor.from_pretrained(
             checkpoint, **options
