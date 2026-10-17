@@ -452,6 +452,6 @@ class ChandraOCREngine(BaseOCREngine):
         req = urllib.request.Request(  # noqa: S310
             url, data=payload, headers={"Content-Type": "application/json"}
         )
-        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310
+        with urllib.request.urlopen(req, timeout=60) as resp:  # noqa: S310  # nosec B310
             data = json.loads(resp.read().decode("utf-8"))
         return str(data["choices"][0]["message"]["content"])

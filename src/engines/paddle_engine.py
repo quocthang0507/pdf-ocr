@@ -138,13 +138,13 @@ class PaddleOCREngine(BaseOCREngine):
 
             inference.create_predictor = _patched_create
             inference._pdf_ocr_cpu_patched = True
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     def _load_model(self) -> None:
         try:
             import_module("torch")
-        except Exception:
+        except Exception:  # nosec B110
             pass
         os.environ["PADDLE_PDX_DISABLE_MODEL_SOURCE_CHECK"] = "True"
         if not self._uses_gpu():

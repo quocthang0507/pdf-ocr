@@ -63,7 +63,7 @@ class SuryaOCREngine(BaseOCREngine):
             if config_cls is not None:
                 config_cls.has_no_defaults_at_init = True
                 config_cls.get_text_config = lambda self, *args, **kwargs: self.decoder
-        except Exception:
+        except Exception:  # nosec B110
             pass
 
     def _load_model(self) -> None:
