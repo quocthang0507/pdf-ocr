@@ -11,12 +11,9 @@ from PySide6.QtCore import Qt, Signal
 from PySide6.QtGui import QColor, QKeySequence, QShortcut, QTextCharFormat, QTextCursor
 from PySide6.QtWidgets import (
     QApplication,
-    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPlainTextEdit,
-    QPushButton,
     QScrollBar,
     QSpinBox,
     QSplitter,
@@ -29,6 +26,13 @@ from src.constants import LOW_CONFIDENCE_COLOR, LOW_CONFIDENCE_THRESHOLD
 from src.core.models import BoundingBox, OCRPage, OCRTable
 from src.core.postprocessor import Postprocessor
 from src.core.spell_corrector import VietnameseSpellCorrector
+from src.gui.components.comparison_panels import (
+    build_nav_bar,
+    build_region_panel,
+    build_structure_panel,
+    build_transcript_bar,
+    make_btn,
+)
 from src.gui.components.document_canvas import DocumentCanvas
 from src.gui.components.transcript_renderer import (
     TextSpan,
@@ -45,20 +49,8 @@ _MIN_PAGE_PANE_WIDTH = 240
 _EVEN_SPLIT = 600
 _REGION_RESULT_MAX_HEIGHT = 140
 _SEARCH_HIGHLIGHT_COLOR = "#93c5fd"
+_ACTIVE_BLOCK_HIGHLIGHT_COLOR = "#bae6fd"
 _ZOOM_ACTIONS = {1: "zoom_in", -1: "zoom_out", 0: "reset_zoom"}
-
-
-def _group_label(text: str, parent: QWidget) -> QLabel:
-    label = QLabel(text, parent)
-    label.setObjectName("nav_group_label")
-    return label
-
-
-def _separator(parent: QWidget) -> QFrame:
-    line = QFrame(parent)
-    line.setObjectName("nav_separator")
-    line.setFrameShape(QFrame.Shape.VLine)
-    return line
 
 
 class ComparisonDock(QWidget):
@@ -94,6 +86,7 @@ class ComparisonDock(QWidget):
         self._block_spans: tuple[TextSpan, ...] = ()
         self._uncertain_spans: tuple[TextSpan, ...] = ()
         self._search_spans: tuple[TextSpan, ...] = ()
+        self._active_block_span: TextSpan | None = None
         self._uncertain_index = -1
         self._page: OCRPage | None = None
         self._current_page = 0
@@ -113,72 +106,32 @@ class ComparisonDock(QWidget):
         self._update_word_count()
 
     def _init_transcript_bar(self) -> None:
-        self.transcript_bar = QFrame(self)
-        self.transcript_bar.setObjectName("transcript_bar")
-        self.transcript_title_label = QLabel("Văn bản nhận diện", self.transcript_bar)
-        self.transcript_title_label.setObjectName("transcript_title_label")
-        self.word_count_label = QLabel("0 từ · 0 ký tự", self.transcript_bar)
-        self.word_count_label.setObjectName("word_count_label")
-        self.spell_fix_btn = QPushButton("Sửa chính tả", self.transcript_bar)
-        self.spell_fix_btn.setObjectName("spell_fix_button")
-        self.spell_fix_btn.setToolTip(
-            "Sửa lỗi dấu thanh và từ ghép tiếng Việt theo ngữ cảnh (hỗ trợ Ctrl+Z)"
-        )
-        self.find_replace_btn = QPushButton("Tìm && Thay thế", self.transcript_bar)
-        self.find_replace_btn.setObjectName("find_replace_button")
-        self.find_replace_btn.setToolTip("Mở hộp thoại Tìm và thay thế (Ctrl+H)")
-        self.copy_transcript_btn = QPushButton("Sao chép", self.transcript_bar)
-        self.copy_transcript_btn.setObjectName("copy_transcript_button")
-        self.copy_transcript_btn.setToolTip("Sao chép toàn bộ văn bản trang hiện tại")
+        self.transcript_bar, res = build_transcript_bar(self)
+        self.transcript_title_label = res["title"]
+        self.word_count_label = res["word_count"]
+        self.spell_fix_btn = res["spell_btn"]
+        self.find_replace_btn = res["find_btn"]
+        self.copy_transcript_btn = res["copy_btn"]
 
     def _init_region_panel(self) -> None:
-        self.region_panel = QFrame(self)
-        self.region_panel.setObjectName("region_panel")
-        self.region_title = QLabel("Kết quả vùng chọn", self.region_panel)
-        self.region_title.setObjectName("region_title")
-        self.region_copy_button = QPushButton("Sao chép", self.region_panel)
-        self.region_copy_button.setObjectName("region_copy")
-        self.region_insert_button = QPushButton("Chèn vào bản chép", self.region_panel)
-        self.region_insert_button.setObjectName("region_insert")
-        self.region_insert_button.setToolTip("Chèn kết quả vùng chọn vào bản chép")
-        self.region_rerun_button = QPushButton("OCR bằng mô hình", self.region_panel)
-        self.region_rerun_button.setObjectName("region_rerun")
-        self.region_rerun_button.setToolTip("Nhận diện lại vùng này bằng mô hình")
-        self.region_source_label = QLabel("", self.region_panel)
-        self.region_source_label.setObjectName("region_source")
-        self.region_source_label.setWordWrap(True)
-        self.region_label = QPlainTextEdit(self.region_panel)
-        self.region_label.setObjectName("region_result")
-        self.region_label.setReadOnly(True)
-        self.region_label.setMaximumHeight(_REGION_RESULT_MAX_HEIGHT)
-        self.region_panel.hide()
+        self.region_panel, res = build_region_panel(self)
+        self.region_title = res["title"]
+        self.region_copy_button = res["copy_btn"]
+        self.region_insert_button = res["insert_btn"]
+        self.region_rerun_button = res["rerun_btn"]
+        self.region_source_label = res["source_label"]
+        self.region_label = res["editor"]
 
     def _init_structure_panel(self) -> None:
-        self.structure_panel = QFrame(self)
-        self.structure_panel.setObjectName("structure_panel")
-        self.structure_label = QLabel(self.structure_panel)
-        self.structure_label.setObjectName("structure_summary")
-        self.structure_label.setWordWrap(True)
-        self.uncertain_prev_btn = QPushButton("◀ Từ nghi ngờ", self.structure_panel)
-        self.uncertain_prev_btn.setObjectName("uncertain_prev_button")
-        self.uncertain_prev_btn.setToolTip("Đi tới từ có độ tin cậy thấp phía trước")
-        self.uncertain_next_btn = QPushButton("Từ nghi ngờ ▶", self.structure_panel)
-        self.uncertain_next_btn.setObjectName("uncertain_next_button")
-        self.uncertain_next_btn.setToolTip("Đi tới từ có độ tin cậy thấp tiếp theo")
-        self.table_combo = QComboBox(self.structure_panel)
-        self.table_combo.setObjectName("table_combo")
-        self.table_combo.setToolTip("Chọn bảng biểu để xem trên trang")
-        self.edit_table_button = QPushButton("Chỉnh sửa bảng…", self.structure_panel)
-        self.edit_table_button.setObjectName("edit_table_button")
-        self.edit_table_button.setToolTip(
-            "Sửa từng ô của bảng trước khi xuất ra Excel/Word"
-        )
-        self.structure_panel.hide()
+        self.structure_panel, res = build_structure_panel(self)
+        self.structure_label = res["summary"]
+        self.uncertain_prev_btn = res["prev_btn"]
+        self.uncertain_next_btn = res["next_btn"]
+        self.table_combo = res["table_combo"]
+        self.edit_table_button = res["edit_btn"]
 
     def _init_nav_controls(self) -> None:
-        self.prev_page_btn = QPushButton("◀", self)
-        self.prev_page_btn.setObjectName("prev_page_button")
-        self.prev_page_btn.setToolTip("Trang trước")
+        self.prev_page_btn = make_btn("◀", "prev_page_button", "Trang trước", self)
         self.prev_page_btn.setEnabled(False)
         self.page_spin = QSpinBox(self)
         self.page_spin.setObjectName("page_spin")
@@ -196,29 +149,23 @@ class ComparisonDock(QWidget):
         self.page_label = QLabel("/ 0", self)
         self.page_label.setObjectName("page_indicator")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        self.next_page_btn = QPushButton("▶", self)
-        self.next_page_btn.setObjectName("next_page_button")
-        self.next_page_btn.setToolTip("Trang sau")
+        self.next_page_btn = make_btn("▶", "next_page_button", "Trang sau", self)
         self.next_page_btn.setEnabled(False)
         self._init_zoom_and_rotate_controls()
 
     def _init_zoom_and_rotate_controls(self) -> None:
-        self.zoom_out_btn = QPushButton("−", self)
-        self.zoom_out_btn.setObjectName("zoom_out_button")
-        self.zoom_out_btn.setToolTip("Thu nhỏ")
+        self.zoom_out_btn = make_btn("−", "zoom_out_button", "Thu nhỏ", self)
         self.zoom_label = QLabel("100%", self)
         self.zoom_label.setObjectName("zoom_indicator")
         self.zoom_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
         self.zoom_label.setMinimumWidth(48)
-        self.zoom_in_btn = QPushButton("+", self)
-        self.zoom_in_btn.setObjectName("zoom_in_button")
-        self.zoom_in_btn.setToolTip("Phóng to")
-        self.rotate_left_btn = QPushButton("↺", self)
-        self.rotate_left_btn.setObjectName("rotate_left_button")
-        self.rotate_left_btn.setToolTip("Xoay trái 90°")
-        self.rotate_right_btn = QPushButton("↻", self)
-        self.rotate_right_btn.setObjectName("rotate_right_button")
-        self.rotate_right_btn.setToolTip("Xoay phải 90°")
+        self.zoom_in_btn = make_btn("+", "zoom_in_button", "Phóng to", self)
+        self.rotate_left_btn = make_btn(
+            "↺", "rotate_left_button", "Xoay trái 90°", self
+        )
+        self.rotate_right_btn = make_btn(
+            "↻", "rotate_right_button", "Xoay phải 90°", self
+        )
         for btn in (
             self.zoom_out_btn,
             self.zoom_in_btn,
@@ -226,16 +173,17 @@ class ComparisonDock(QWidget):
             self.rotate_right_btn,
         ):
             btn.setMinimumSize(30, 30)
-        self.zoom_reset_btn = QPushButton("Vừa trang", self)
-        self.zoom_reset_btn.setObjectName("zoom_reset_button")
-        self.zoom_reset_btn.setToolTip("Hiển thị vừa toàn trang")
-        self.fit_width_btn = QPushButton("Vừa ngang", self)
-        self.fit_width_btn.setObjectName("fit_width_button")
-        self.fit_width_btn.setToolTip("Hiển thị vừa chiều ngang khung nhìn")
+        self.zoom_reset_btn = make_btn(
+            "Vừa trang", "zoom_reset_button", "Hiển thị vừa toàn trang", self
+        )
+        self.fit_width_btn = make_btn(
+            "Vừa ngang", "fit_width_button", "Hiển thị vừa chiều ngang khung nhìn", self
+        )
 
     def _connect_signals(self) -> None:
         self.canvas.block_selected.connect(self._focus_text_block)
         self.canvas.block_activated.connect(self.edit_block_table)
+        self.canvas.block_context_action.connect(self._on_block_context_action)
         self.canvas.region_selected.connect(self.region_ocr_requested)
         self.canvas.page_step_requested.connect(self._on_page_step_requested)
         self.canvas.region_mode_cancelled.connect(self.region_mode_cancelled)
@@ -303,68 +251,29 @@ class ComparisonDock(QWidget):
         layout.addWidget(splitter)
 
     def _build_subpanels(self) -> None:
-        structure_layout = QVBoxLayout(self.structure_panel)
-        structure_layout.setContentsMargins(10, 6, 10, 6)
-        structure_layout.setSpacing(4)
-        structure_layout.addWidget(self.structure_label)
-        structure_actions = QHBoxLayout()
-        structure_actions.setContentsMargins(0, 0, 0, 0)
-        structure_actions.setSpacing(6)
-        structure_actions.addWidget(self.uncertain_prev_btn)
-        structure_actions.addWidget(self.uncertain_next_btn)
-        structure_actions.addStretch(1)
-        structure_actions.addWidget(self.table_combo)
-        structure_actions.addWidget(self.edit_table_button)
-        structure_layout.addLayout(structure_actions)
         self.table_combo.currentIndexChanged.connect(self._show_table_on_canvas)
         self.edit_table_button.clicked.connect(self.edit_selected_table)
-
-        header = QHBoxLayout()
-        header.addWidget(self.region_title)
-        header.addStretch(1)
-        header.addWidget(self.region_rerun_button)
-        header.addWidget(self.region_insert_button)
-        header.addWidget(self.region_copy_button)
-        panel_layout = QVBoxLayout(self.region_panel)
-        panel_layout.setContentsMargins(12, 10, 12, 12)
-        panel_layout.addLayout(header)
-        panel_layout.addWidget(self.region_source_label)
-        panel_layout.addWidget(self.region_label)
         self.region_copy_button.clicked.connect(self.copy_region_result)
         self.region_insert_button.clicked.connect(self.insert_region_result)
         self.region_rerun_button.clicked.connect(self.region_rerun_requested)
 
     def _build_nav_bar(self, parent: QWidget) -> QFrame:
-        nav_bar = QFrame(parent)
-        nav_bar.setObjectName("nav_bar")
-        nav_layout = QVBoxLayout(nav_bar)
-        nav_layout.setContentsMargins(8, 4, 8, 4)
-        nav_layout.setSpacing(4)
-        zoom_row = QHBoxLayout()
-        zoom_row.setContentsMargins(0, 0, 0, 0)
-        zoom_row.setSpacing(6)
-        zoom_row.addWidget(_group_label("Thu phóng", nav_bar))
-        zoom_row.addWidget(self.zoom_out_btn)
-        zoom_row.addWidget(self.zoom_label)
-        zoom_row.addWidget(self.zoom_in_btn)
-        zoom_row.addWidget(self.zoom_reset_btn)
-        zoom_row.addWidget(self.fit_width_btn)
-        zoom_row.addWidget(_separator(nav_bar))
-        zoom_row.addWidget(self.rotate_left_btn)
-        zoom_row.addWidget(self.rotate_right_btn)
-        zoom_row.addStretch(1)
-        page_row = QHBoxLayout()
-        page_row.setContentsMargins(0, 0, 0, 0)
-        page_row.setSpacing(6)
-        page_row.addWidget(_group_label("Trang", nav_bar))
-        page_row.addWidget(self.prev_page_btn)
-        page_row.addWidget(self.page_spin)
-        page_row.addWidget(self.next_page_btn)
-        page_row.addWidget(self.page_slider, 1)
-        page_row.addWidget(self.page_label)
-        nav_layout.addLayout(zoom_row)
-        nav_layout.addLayout(page_row)
-        return nav_bar
+        ctrls = {
+            "zoom_out": self.zoom_out_btn,
+            "zoom_label": self.zoom_label,
+            "zoom_in": self.zoom_in_btn,
+            "zoom_reset": self.zoom_reset_btn,
+            "fit_width": self.fit_width_btn,
+            "rotate_left": self.rotate_left_btn,
+            "rotate_right": self.rotate_right_btn,
+            "prev_page": self.prev_page_btn,
+            "page_spin": self.page_spin,
+            "next_page": self.next_page_btn,
+            "page_slider": self.page_slider,
+            "page_label": self.page_label,
+        }
+        bar, _ = build_nav_bar(parent, ctrls)
+        return bar
 
     def set_confidence_threshold(self, threshold: float) -> None:
         """Update the low-confidence warning threshold and re-highlight live."""
@@ -503,6 +412,7 @@ class ComparisonDock(QWidget):
         self._block_spans = ()
         self._uncertain_spans = ()
         self._search_spans = ()
+        self._active_block_span = None
         self._uncertain_index = -1
         self._page = None
         self.canvas.set_image(image)
@@ -524,6 +434,7 @@ class ComparisonDock(QWidget):
 
         self._uncertain_spans = uncertain
         self._search_spans = ()
+        self._active_block_span = None
         self._uncertain_index = -1
         self._page = page
         self.canvas.set_image(image)
@@ -540,6 +451,7 @@ class ComparisonDock(QWidget):
         self._block_spans = ()
         self._uncertain_spans = ()
         self._search_spans = ()
+        self._active_block_span = None
         self._uncertain_index = -1
         self._page = None
         self.table_editor = None
@@ -564,15 +476,17 @@ class ComparisonDock(QWidget):
         return len(self._uncertain_spans)
 
     def jump_to_next_uncertain(self) -> None:
-        if not self._uncertain_spans:
-            return
-        self._uncertain_index = (self._uncertain_index + 1) % len(self._uncertain_spans)
-        self._select_uncertain_span(self._uncertain_spans[self._uncertain_index])
+        self._cycle_uncertain(1)
 
     def jump_to_prev_uncertain(self) -> None:
+        self._cycle_uncertain(-1)
+
+    def _cycle_uncertain(self, delta: int) -> None:
         if not self._uncertain_spans:
             return
-        self._uncertain_index = (self._uncertain_index - 1) % len(self._uncertain_spans)
+        self._uncertain_index = (self._uncertain_index + delta) % len(
+            self._uncertain_spans
+        )
         self._select_uncertain_span(self._uncertain_spans[self._uncertain_index])
 
     def _select_uncertain_span(self, span: TextSpan) -> None:
@@ -684,7 +598,7 @@ class ComparisonDock(QWidget):
         self.region_source_label.setVisible(bool(source))
 
     def region_result(self) -> str:
-        return self.region_label.toPlainText()
+        return str(self.region_label.toPlainText())
 
     def insert_region_result(self) -> None:
         """Put the region text into the transcript at the cursor."""
@@ -700,6 +614,11 @@ class ComparisonDock(QWidget):
 
     def _apply_extra_selections(self) -> None:
         selections: list[QTextEdit.ExtraSelection] = []
+        if self._active_block_span is not None:
+            active_fmt = QTextCharFormat()
+            active_fmt.setBackground(QColor(_ACTIVE_BLOCK_HIGHLIGHT_COLOR))
+            active_fmt.setForeground(QColor("#0f172a"))
+            selections.append(self._make_selection(self._active_block_span, active_fmt))
         warning = QTextCharFormat()
         warning.setBackground(QColor(LOW_CONFIDENCE_COLOR))
         for span in self._uncertain_spans:
@@ -728,17 +647,46 @@ class ComparisonDock(QWidget):
         index = self._block_at(self.editor.textCursor().position())
         if index is None:
             return
+        self._active_block_span = self._block_spans[index]
         with self._suspend_sync():
+            self._apply_extra_selections()
             self.canvas.focus_on_block(index)
 
     def _focus_text_block(self, index: int) -> None:
         if self._syncing or not 0 <= index < len(self._block_spans):
             return
+        span = self._block_spans[index]
+        self._active_block_span = span
         with self._suspend_sync():
             cursor = self.editor.textCursor()
-            cursor.setPosition(self._block_spans[index].start)
+            cursor.setPosition(span.start)
+            cursor.setPosition(span.end, QTextCursor.MoveMode.KeepAnchor)
             self.editor.setTextCursor(cursor)
             self.editor.ensureCursorVisible()
+            self._apply_extra_selections()
+
+    def block_text(self, index: int) -> str:
+        """Return the live transcript slice corresponding to block `index`."""
+        if 0 <= index < len(self._block_spans):
+            span = self._block_spans[index]
+            full = self.editor.toPlainText()
+            if 0 <= span.start <= span.end <= len(full):
+                return full[span.start : span.end]
+        if self._page is not None and 0 <= index < len(self._page.blocks):
+            return self._page.blocks[index].text
+        return ""
+
+    def _on_block_context_action(self, action_id: str, index: int) -> None:
+        self._focus_text_block(index)
+        if action_id == "copy_block_text":
+            text = self.block_text(index)
+            if text:
+                QApplication.clipboard().setText(text)
+                self.transcript_copied.emit()
+        elif action_id == "focus_block_text":
+            self.editor.setFocus()
+        elif action_id == "edit_block_table":
+            self.edit_block_table(index)
 
     def _on_editor_text_changed(self) -> None:
         self._update_word_count()

@@ -336,3 +336,29 @@ def test_spell_options_apply_custom_dictionary_and_tone_style(
     dock.apply_spell_correction()
 
     assert dock.transcript() == "công ty hòa bình"
+
+
+def test_clicking_bounding_box_highlights_text_and_extra_selection(
+    dock: ComparisonDock,
+) -> None:
+    _load(dock)
+
+    dock.canvas.select_block(1)
+
+    assert dock.editor.textCursor().selectedText() == "Khách hàhg"
+    highlighted_texts = [
+        sel.cursor.selectedText() for sel in dock.editor.extraSelections()
+    ]
+    assert "Khách hàhg" in highlighted_texts
+
+
+def test_right_click_copy_block_text_copies_live_editor_block_text(
+    dock: ComparisonDock, qtbot, qapp
+) -> None:
+    _load(dock)
+
+    with qtbot.waitSignal(dock.transcript_copied):
+        dock.canvas.trigger_block_action(0, "copy_block_text")
+
+    assert qapp.clipboard().text() == "HÓA ĐƠN"
+    assert dock.editor.textCursor().selectedText() == "HÓA ĐƠN"

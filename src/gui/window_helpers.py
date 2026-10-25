@@ -428,6 +428,12 @@ def connect_window_commands(window: Any) -> None:
     layout_action.setChecked(True)
     layout_action.toggled.connect(window.comparison.set_layout_visible)
     window.comparison.table_edited.connect(window._on_table_edited)
+    window.comparison.canvas.block_context_action.connect(
+        lambda act, idx: window.guarded(
+            lambda: handle_block_context_action(window, act, idx),
+            title="Tác vụ khung nhận diện",
+        )
+    )
     window.comparison.canvas.region_context_action.connect(
         lambda act, reg: window.guarded(
             lambda: handle_region_context_action(window, act, reg),
@@ -470,6 +476,28 @@ def handle_region_context_action(
         redact_region_in_pdf(session.path, cur_page, norm)
         reload_modified_pdf(window)
         window.notifications.notify("Đã che mật vùng chọn trên PDF.", Severity.SUCCESS)
+
+
+def handle_block_context_action(window: Any, action_id: str, index: int) -> None:
+    """Handle a right-click context action on a recognized bounding box."""
+    from src.gui.components.notifications import Severity
+
+    items = window.comparison.canvas.block_items()
+    if not 0 <= index < len(items):
+        return
+    block = items[index].block
+    if action_id == "copy_block_image":
+        window.notifications.notify(
+            "Đã sao chép ảnh vùng khung vào bộ nhớ tạm.", Severity.INFO
+        )
+    elif action_id == "ocr_block":
+        window._last_region = block.bbox
+        window.rerun_last_region_with_model()
+    elif action_id in ("highlight_block", "redact_block"):
+        reg_action = (
+            "highlight_region" if action_id == "highlight_block" else "redact_region"
+        )
+        handle_region_context_action(window, reg_action, block.bbox)
 
 
 def load_safe_preferences() -> Preferences:

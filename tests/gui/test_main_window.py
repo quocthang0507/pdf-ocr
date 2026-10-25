@@ -977,3 +977,15 @@ def test_switching_to_paddle_warns_about_missing_vietnamese_letters(
         "PaddleOCR bỏ sót chữ tiếng Việt" in toast.message_label.text()
         for toast in window.notifications.visible_toasts()
     )
+
+
+def test_window_handles_block_context_actions(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    from src.gui.window_helpers import handle_block_context_action
+
+    window = _recognised_window(qtbot, settings, tmp_path)
+    assert len(window.comparison.canvas.block_items()) > 0
+
+    handle_block_context_action(window, "copy_block_image", 0)
+    assert any("ảnh vùng khung" in m for m in _messages(window))

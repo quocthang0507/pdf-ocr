@@ -259,3 +259,65 @@ def test_canvas_reports_has_page_and_renders_empty_state_without_error(
 
     canvas.clear_page()
     assert canvas.has_page() is False
+
+
+def test_block_item_exposes_block_model_and_hover_state(
+    canvas: DocumentCanvas,
+) -> None:
+    page = _page()
+    canvas.set_image(_image())
+    canvas.set_blocks(page.blocks)
+
+    item = canvas.block_items()[0]
+    assert item.block == page.blocks[0]
+    assert item.cursor().shape() == Qt.CursorShape.PointingHandCursor
+    assert item.is_hovered() is False
+
+    item.set_hovered(True)
+    assert item.is_hovered() is True
+    assert item.brush().color().alpha() > 0
+
+    item.set_hovered(False)
+    assert item.is_hovered() is False
+    assert item.brush().color().alpha() == 0
+
+
+def test_trigger_block_action_copies_text_and_image(
+    canvas: DocumentCanvas, qtbot, qapp
+) -> None:
+    canvas.set_image(_image())
+    canvas.set_blocks(_page().blocks)
+
+    with qtbot.waitSignal(canvas.block_context_action) as blocker:
+        canvas.trigger_block_action(1, "copy_block_text")
+
+    assert blocker.args == ["copy_block_text", 1]
+    assert canvas.selected_block() == 1
+    assert qapp.clipboard().text() == "Nội dung"
+
+    with qtbot.waitSignal(canvas.block_context_action) as img_blocker:
+        canvas.trigger_block_action(1, "copy_block_image")
+
+    assert img_blocker.args == ["copy_block_image", 1]
+    assert not qapp.clipboard().pixmap().isNull()
+
+
+def test_ctrl_c_on_selected_block_copies_its_text(
+    canvas: DocumentCanvas, qtbot, qapp
+) -> None:
+    from PySide6.QtGui import QKeyEvent
+
+    canvas.set_image(_image())
+    canvas.set_blocks(_page().blocks)
+    canvas.select_block(0)
+
+    copy_event = QKeyEvent(
+        QKeyEvent.Type.KeyPress,
+        Qt.Key.Key_C,
+        Qt.KeyboardModifier.ControlModifier,
+    )
+    with qtbot.waitSignal(canvas.block_context_action) as blocker:
+        canvas.keyPressEvent(copy_event)
+
+    assert blocker.args == ["copy_block_text", 0]
+    assert qapp.clipboard().text() == "Tiêu đề"

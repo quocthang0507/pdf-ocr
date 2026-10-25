@@ -6,13 +6,14 @@ import time
 from collections.abc import Sequence
 
 import numpy as np
-from PySide6.QtCore import QPointF, QRect, QRectF, QSizeF, Qt, Signal
+from PySide6.QtCore import QPoint, QPointF, QRect, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
     QContextMenuEvent,
     QFont,
     QKeyEvent,
+    QKeySequence,
     QMouseEvent,
     QPainter,
     QPen,
@@ -26,12 +27,14 @@ from PySide6.QtWidgets import (
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
+    QGraphicsSceneHoverEvent,
     QGraphicsView,
     QMenu,
+    QStyleOptionGraphicsItem,
     QWidget,
 )
 
-from src.constants import BLOCK_TYPE_COLORS, SELECTION_COLOR
+from src.constants import BLOCK_TYPE_COLORS, SELECTION_COLOR, BlockType
 from src.core.models import BoundingBox, OCRBlock
 from src.utils.image_utils import ndarray_to_qimage
 
@@ -39,8 +42,10 @@ MIN_ZOOM = 0.05
 MAX_ZOOM = 40.0
 ZOOM_STEP = 1.25
 _OUTLINE_WIDTH = 2.0
+_HOVER_WIDTH = 2.5
 _SELECTED_WIDTH = 3.0
-_FILL_ALPHA = 38
+_HOVER_ALPHA = 28
+_FILL_ALPHA = 42
 _REGION_ALPHA = 28
 _MIN_REGION_PIXELS = 4.0
 
@@ -54,23 +59,78 @@ class BlockItem(QGraphicsRectItem):
             QRectF(bbox.x1, bbox.y1, bbox.width, bbox.height),
         )
         self.index = index
+        self.block = block
         self.block_type = block.block_type
         self._colour = QColor(BLOCK_TYPE_COLORS[block.block_type])
+        self._hovered = False
         self.setFlag(QGraphicsItem.GraphicsItemFlag.ItemIsSelectable, True)
         self.setAcceptHoverEvents(True)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setToolTip(block.text)
-        self.setZValue(1)
+        area = max(1.0, bbox.width * bbox.height)
+        self.setZValue(1.0 + (1.0 / area))
         self._apply_style(selected=False)
+
+    def is_hovered(self) -> bool:
+        return self._hovered
+
+    def set_hovered(self, hovered: bool) -> None:
+        self._hovered = bool(hovered)
+        self._apply_style(selected=self.isSelected())
+        self.update()
 
     def _apply_style(self, *, selected: bool) -> None:
         colour = QColor(SELECTION_COLOR) if selected else self._colour
-        width = _SELECTED_WIDTH if selected else _OUTLINE_WIDTH
+        if selected:
+            width = _SELECTED_WIDTH
+            alpha = _FILL_ALPHA
+        elif self._hovered:
+            width = _HOVER_WIDTH
+            alpha = _HOVER_ALPHA
+        else:
+            width = _OUTLINE_WIDTH
+            alpha = 0
         pen = QPen(colour, width)
         pen.setCosmetic(True)
         self.setPen(pen)
         fill = QColor(colour)
-        fill.setAlpha(_FILL_ALPHA if selected else 0)
+        fill.setAlpha(alpha)
         self.setBrush(QBrush(fill))
+
+    def hoverEnterEvent(  # noqa: N802 - Qt override
+        self, event: QGraphicsSceneHoverEvent
+    ) -> None:
+        self.set_hovered(True)
+        super().hoverEnterEvent(event)
+
+    def hoverLeaveEvent(  # noqa: N802 - Qt override
+        self, event: QGraphicsSceneHoverEvent
+    ) -> None:
+        self.set_hovered(False)
+        super().hoverLeaveEvent(event)
+
+    def paint(  # noqa: N802 - Qt override
+        self,
+        painter: QPainter,
+        option: QStyleOptionGraphicsItem,
+        widget: QWidget | None = None,
+    ) -> None:
+        super().paint(painter, option, widget)
+        if not (self.isSelected() or self._hovered) or len(self.block.lines) <= 1:
+            return
+        painter.save()
+        line_pen = QPen(
+            QColor(SELECTION_COLOR) if self.isSelected() else self._colour,
+            1.0,
+            Qt.PenStyle.DashLine,
+        )
+        line_pen.setCosmetic(True)
+        painter.setPen(line_pen)
+        painter.setBrush(Qt.BrushStyle.NoBrush)
+        for line in self.block.lines:
+            lb = line.bbox
+            painter.drawRect(QRectF(lb.x1, lb.y1, lb.width, lb.height))
+        painter.restore()
 
     def itemChange(  # noqa: N802 - Qt override
         self, change: QGraphicsItem.GraphicsItemChange, value: object
@@ -92,6 +152,7 @@ class DocumentCanvas(QGraphicsView):
 
     block_selected = Signal(int)
     block_activated = Signal(int)
+    block_context_action = Signal(str, int)
     region_selected = Signal(BoundingBox)
     region_context_action = Signal(str, BoundingBox)
     zoom_changed = Signal(float)
@@ -257,6 +318,27 @@ class DocumentCanvas(QGraphicsView):
         if index is not None:
             self.block_selected.emit(index)
 
+    def block_item_at(self, viewport_pos: QPoint) -> BlockItem | None:
+        """Return the topmost visible BlockItem at the given viewport position."""
+        for item in self.items(viewport_pos):
+            if isinstance(item, BlockItem) and item.isVisible():
+                return item
+        return None
+
+    def trigger_block_action(self, index: int, action_id: str) -> None:
+        """Execute or emit a context action for a layout bounding box."""
+        if not 0 <= index < len(self._block_items):
+            return
+        self.select_block(index)
+        item = self._block_items[index]
+        if action_id == "copy_block_text":
+            QApplication.clipboard().setText(item.block.text)
+        elif action_id == "copy_block_image" and self._page_item is not None:
+            crop_rect = item.rect().toRect()
+            cropped = self._page_item.pixmap().copy(crop_rect)
+            QApplication.clipboard().setPixmap(cropped)
+        self.block_context_action.emit(action_id, index)
+
     # -- region selection -------------------------------------------------
 
     def region_mode(self) -> bool:
@@ -309,9 +391,16 @@ class DocumentCanvas(QGraphicsView):
     def contextMenuEvent(  # noqa: N802 - Qt override
         self, event: QContextMenuEvent
     ) -> None:
-        if self._region_item is None:
-            super().contextMenuEvent(event)
+        if self._region_item is not None:
+            self._show_region_context_menu(event)
             return
+        block_item = self.block_item_at(event.pos())
+        if block_item is not None:
+            self._show_block_context_menu(event, block_item)
+            return
+        super().contextMenuEvent(event)
+
+    def _show_region_context_menu(self, event: QContextMenuEvent) -> None:
         menu = QMenu(self)
         actions = [
             ("ocr_region", "Nhận dạng lại vùng chọn (OCR)"),
@@ -328,7 +417,40 @@ class DocumentCanvas(QGraphicsView):
         menu.exec(event.globalPos())
         event.accept()
 
+    def _show_block_context_menu(
+        self, event: QContextMenuEvent, item: BlockItem
+    ) -> None:
+        self.select_block(item.index)
+        self.block_selected.emit(item.index)
+        menu = QMenu(self)
+        actions = [
+            ("copy_block_text", "Sao chép nội dung văn bản (Ctrl+C)"),
+            ("copy_block_image", "Sao chép ảnh vùng khung"),
+            ("focus_block_text", "Tô sáng & chỉnh sửa trong bản chép"),
+            ("ocr_block", "Nhận dạng lại khung này (OCR)"),
+            ("highlight_block", "Tô sáng (Highlight) khung trên PDF"),
+            ("redact_block", "Che mật (Redact) khung trên PDF"),
+        ]
+        if item.block_type == BlockType.TABLE:
+            actions.append(("edit_block_table", "Chỉnh sửa bảng biểu…"))
+        for act_id, label in actions:
+            act = menu.addAction(label)
+            act.triggered.connect(
+                lambda _checked=False, idx=item.index, a=act_id: (
+                    self.trigger_block_action(idx, a)
+                )
+            )
+        menu.exec(event.globalPos())
+        event.accept()
+
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
+        if not self._region_mode and event.button() == Qt.MouseButton.LeftButton:
+            clicked = self.block_item_at(event.position().toPoint())
+            super().mousePressEvent(event)
+            if clicked is not None:
+                self.select_block(clicked.index)
+                self.block_selected.emit(clicked.index)
+            return
         if not self._region_mode or event.button() != Qt.MouseButton.LeftButton:
             super().mousePressEvent(event)
             return
@@ -434,6 +556,16 @@ class DocumentCanvas(QGraphicsView):
             self.region_mode_cancelled.emit()
             event.accept()
             return
+        selected = self.selected_block()
+        if selected is not None:
+            if event.matches(QKeySequence.StandardKey.Copy):
+                self.trigger_block_action(selected, "copy_block_text")
+                event.accept()
+                return
+            if event.key() in (Qt.Key.Key_Return, Qt.Key.Key_Enter):
+                self.trigger_block_action(selected, "focus_block_text")
+                event.accept()
+                return
         super().keyPressEvent(event)
 
     def wheelEvent(self, event: QWheelEvent) -> None:  # noqa: N802 - Qt override
