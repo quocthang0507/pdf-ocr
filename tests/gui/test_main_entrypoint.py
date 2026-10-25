@@ -80,7 +80,7 @@ def test_an_unusable_weights_folder_is_reported_not_fatal(
 ) -> None:
     warnings: list[str] = []
 
-    def failing() -> None:
+    def failing(*_args: object) -> None:
         raise WeightsError("Không ghi được thư mục weights.")
 
     monkeypatch.setattr(entrypoint, "ModelWeightsManager", failing)
@@ -92,3 +92,29 @@ def test_an_unusable_weights_folder_is_reported_not_fatal(
 
     assert entrypoint.main([]) == 0
     assert warnings == ["Không ghi được thư mục weights."]
+
+
+def test_the_saved_custom_weights_folder_is_kept_at_startup(
+    started: dict[str, object], monkeypatch: pytest.MonkeyPatch, tmp_path: Path
+) -> None:
+    """The default folder must not override the one chosen in Settings."""
+    chosen = str(tmp_path / "E-drive-models")
+    opened: list[object] = []
+    monkeypatch.setattr(
+        entrypoint,
+        "ConfigManager",
+        lambda: type(
+            "C",
+            (),
+            {
+                "load": lambda _s: type(
+                    "P", (), {"weights_dir": chosen, "language": "vi", "theme": "light"}
+                )()
+            },
+        )(),
+    )
+    monkeypatch.setattr(entrypoint, "ModelWeightsManager", opened.append)
+
+    entrypoint.main([])
+
+    assert opened == [chosen]

@@ -16,6 +16,29 @@ _NUMBER_RE = re.compile(r"^\d+(?:[.,]\d+)*$")
 _EMAIL_RE = re.compile(r"^[a-zA-Z0-9_.+-]+@[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+$")
 _VN_PHONE_RE = re.compile(r"^(?:0[35789]|\+?84[35789])[0-9]{8}$")
 _WORD_TOKEN_RE = re.compile(r"([^\W\d_]+)", flags=re.UNICODE)
+#: Surnames that are not also everyday words, so capitalising them before a
+#: capitalised given name is safe ("nguyễn Văn An" -> "Nguyễn Văn An").
+_DISTINCT_SURNAMES = frozenset(
+    {
+        "nguyễn",
+        "trần",
+        "phạm",
+        "huỳnh",
+        "vũ",
+        "võ",
+        "đặng",
+        "bùi",
+        "đỗ",
+        "trương",
+        "trịnh",
+        "quách",
+        "phùng",
+        "nghiêm",
+        "tôn",
+    }
+)
+_SENTENCE_END = (".", "!", "?")
+_CONTINUATION = ("...", "…")
 
 # Direct single-syllable OCR vowel/horn/tone confusions that are orthographically
 # invalid or overwhelmingly OCR errors in Vietnamese documents.
@@ -228,7 +251,41 @@ class VietnameseSpellCorrector:
         self._apply_trigrams(words, elig, matches, line)
         # 3. Contextual 2-gram fixes
         self._apply_bigrams(words, elig, matches, line)
+        # 4. Capitals that line recognisers tend to drop
+        self._restore_capitals(words, matches, line)
         return self._reassemble(line, matches, words)
+
+    @staticmethod
+    def _restore_capitals(
+        words: list[str], matches: list[re.Match[str]], line: str
+    ) -> None:
+        """Re-capitalise sentence starts and surnames read as lower case.
+
+        Line recognisers often confuse S/s, C/c and similar capitals, giving
+        "ngành nghề. số lao động" or "nguyễn Văn An".
+        """
+        for i in range(1, len(words)):
+            word = words[i]
+            if not word.islower():
+                continue
+            between = line[matches[i - 1].end() : matches[i].start()]
+            gap = between.strip()
+            if (
+                between[-1:].isspace()
+                and gap.endswith(_SENTENCE_END)
+                and not gap.endswith(_CONTINUATION)
+                and not (gap == "." and len(words[i - 1]) <= 2)
+            ):
+                words[i] = word[0].upper() + word[1:]
+        for i in range(len(words) - 1):
+            word, following = words[i], words[i + 1]
+            if (
+                word.islower()
+                and word in _DISTINCT_SURNAMES
+                and following[:1].isupper()
+                and line[matches[i].end() : matches[i + 1].start()] == " "
+            ):
+                words[i] = word[0].upper() + word[1:]
 
     @staticmethod
     def _adjacent(line: str, m1: re.Match[str], m2: re.Match[str]) -> bool:

@@ -438,3 +438,20 @@ def test_dock_rejects_a_dpi_outside_the_supported_range(dock: SettingsDock) -> N
 
     assert dock.dpi_spin.value() <= dock.dpi_spin.maximum()
     assert dock.options()["dpi"] == dock.dpi_spin.maximum()
+
+
+def test_dock_drop_downs_follow_the_panel_width(dock: SettingsDock) -> None:
+    """Long model names must not push the options past the panel's right edge."""
+    from PySide6.QtWidgets import QComboBox, QSizePolicy
+
+    combos = dock.findChildren(QComboBox)
+    assert combos
+    for combo in combos:
+        assert (
+            combo.sizeAdjustPolicy()
+            == QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+        )
+        assert combo.sizePolicy().horizontalPolicy() == QSizePolicy.Policy.Expanding
+        if combo.count():
+            popup = combo.view()
+            assert popup.minimumWidth() >= popup.sizeHintForColumn(0)

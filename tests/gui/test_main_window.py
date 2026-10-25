@@ -948,3 +948,27 @@ def test_window_supports_reading_color_modes_and_page_context_edits(
     # Trigger delete_page via NavigationDock context action
     window.navigation_dock.trigger_page_action("delete_page", 2)
     assert window.document_session.page_count == 2
+
+
+def test_opening_another_document_clears_the_previous_run_summary(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    window.batch_status.count_label.setText("Đã xong 1/1 · Lỗi 0")
+    window.batch_status.eta_label.setText("Còn lại: —")
+
+    window.open_path(_pdf(tmp_path, "khac.pdf"))
+
+    assert window.batch_status.count_label.text() == ""
+    assert window.batch_status.eta_label.text() == ""
+
+
+def test_switching_to_paddle_warns_about_missing_vietnamese_letters(
+    window: MainWindow,
+) -> None:
+    combo = window.settings_dock.engine_combo
+    combo.setCurrentIndex(combo.findData("paddle"))
+
+    assert any(
+        "PaddleOCR bỏ sót chữ tiếng Việt" in toast.message_label.text()
+        for toast in window.notifications.visible_toasts()
+    )

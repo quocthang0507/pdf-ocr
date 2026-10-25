@@ -52,6 +52,51 @@ _RESERVED_NAMES = {"CON", "PRN", "AUX", "NUL"} | {
 }
 
 
+# Module-level path constants that libraries freeze from the environment on
+# import, mapped to the cache variable whose new value replaces them.
+_LOADED_CACHE_CONSTANTS: dict[str, dict[str, str]] = {
+    "huggingface_hub.constants": {
+        "HF_HOME": "HF_HOME",
+        "HF_HUB_CACHE": "HF_HUB_CACHE",
+        "HUGGINGFACE_HUB_CACHE": "HUGGINGFACE_HUB_CACHE",
+        "HF_ASSETS_CACHE": "HF_ASSETS_CACHE",
+        "HUGGINGFACE_ASSETS_CACHE": "HUGGINGFACE_ASSETS_CACHE",
+        "HF_XET_CACHE": "HF_XET_CACHE",
+    },
+    "transformers.utils.hub": {
+        "TRANSFORMERS_CACHE": "TRANSFORMERS_CACHE",
+        "PYTORCH_TRANSFORMERS_CACHE": "TRANSFORMERS_CACHE",
+        "PYTORCH_PRETRAINED_BERT_CACHE": "TRANSFORMERS_CACHE",
+    },
+    "paddlex.utils.cache": {"CACHE_DIR": "PADDLE_PDX_CACHE_HOME"},
+}
+
+
+def _refresh_loaded_caches(hooks: dict[str, str]) -> None:
+    """Re-point libraries that were imported before the folder changed.
+
+    HuggingFace, transformers and PaddleX read their cache folders once, at
+    import time; after an engine had been used, choosing another weights
+    folder in Settings silently kept downloading into the old one. Only
+    modules that are already loaded are touched, so nothing is imported here.
+    """
+    for module_name, constants in _LOADED_CACHE_CONSTANTS.items():
+        module = sys.modules.get(module_name)
+        if module is None:
+            continue
+        for attribute, variable in constants.items():
+            if hasattr(module, attribute) and variable in hooks:
+                setattr(module, attribute, hooks[variable])
+    official = sys.modules.get("paddlex.inference.utils.official_models")
+    manager = getattr(official, "official_models", None)
+    if manager is not None and "PADDLE_PDX_CACHE_HOME" in hooks:
+        try:
+            manager._save_dir = Path(hooks["PADDLE_PDX_CACHE_HOME"]) / "official_models"
+            manager._hosters = None  # rebuilt lazily around the new folder
+        except AttributeError:
+            logger.warning("Không cập nhật được thư mục mô hình PaddleX đang nạp.")
+
+
 class ModelWeightsManager:
     """Stateful storage service; initialize before importing provider libraries.
 
@@ -127,6 +172,7 @@ class ModelWeightsManager:
                 "Thư mục cache phải nằm trong thư mục weights."
             ) from error
         os.environ.update(hooks)
+        _refresh_loaded_caches(hooks)
         logger.info("Đã chuyển hướng cache mô hình sang thư mục weights đã chọn.")
 
     def get_engine_weights_dir(self, engine_id: str) -> Path:

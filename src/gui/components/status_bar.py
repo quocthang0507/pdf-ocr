@@ -86,6 +86,12 @@ class BatchStatusBar(QStatusBar):
         self._paused = False
         self.pause_button.setText(PAUSE_LABEL)
 
+    def clear_summary(self) -> None:
+        """Forget the last finished run, e.g. once another document is opened."""
+        if self.progress_bar.isHidden():
+            self.count_label.setText("")
+            self.eta_label.setText("")
+
     def show_progress(self, progress: BatchProgress) -> None:
         self.progress_bar.setValue(progress.percent)
         self.count_label.setText(

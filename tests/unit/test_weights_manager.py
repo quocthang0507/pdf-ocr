@@ -179,3 +179,32 @@ def test_invalid_disk_budget_is_rejected(tmp_path: Path) -> None:
     manager = ModelWeightsManager(tmp_path)
     with pytest.raises(ValueError):
         manager.ensure_disk_space(-1)
+
+
+def test_changing_folder_repoints_libraries_already_imported(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Libraries freeze cache paths on import; a later folder change must win."""
+    from types import ModuleType, SimpleNamespace
+
+    hub = ModuleType("huggingface_hub.constants")
+    hub.HF_HOME = hub.HF_HUB_CACHE = "old"  # type: ignore[attr-defined]
+    transformers_hub = ModuleType("transformers.utils.hub")
+    transformers_hub.TRANSFORMERS_CACHE = "old"  # type: ignore[attr-defined]
+    paddle_models = ModuleType("paddlex.inference.utils.official_models")
+    hosters = SimpleNamespace(_save_dir=Path("old"), _hosters=["stale"])
+    paddle_models.official_models = hosters  # type: ignore[attr-defined]
+    monkeypatch.setitem(sys.modules, "huggingface_hub.constants", hub)
+    monkeypatch.setitem(sys.modules, "transformers.utils.hub", transformers_hub)
+    monkeypatch.setitem(
+        sys.modules, "paddlex.inference.utils.official_models", paddle_models
+    )
+
+    manager = ModelWeightsManager(tmp_path / "ổ E")
+
+    root = manager.base_path
+    assert Path(hub.HF_HUB_CACHE) == root / "huggingface" / "hub"
+    assert Path(hub.HF_HOME) == root / "huggingface"
+    assert Path(transformers_hub.TRANSFORMERS_CACHE) == root / "huggingface" / "hub"
+    assert hosters._save_dir == root / "paddle" / "paddlex" / "official_models"
+    assert hosters._hosters is None

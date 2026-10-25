@@ -145,3 +145,27 @@ def test_xycut_projection_and_overlapping_box_merge() -> None:
     assert len(merged) == 2
     assert merged[0] == BoundingBox(10, 10, 100, 50)
     assert merged[1] == BoundingBox(150, 10, 200, 40)
+
+
+@pytest.mark.unit
+def test_spell_corrector_restores_capitals_dropped_by_the_recogniser() -> None:
+    from src.core.spell_corrector import VietnameseSpellCorrector
+
+    corrector = VietnameseSpellCorrector()
+
+    assert corrector.fix_spelling("ngành nghề. số lao động") == (
+        "ngành nghề. Số lao động"
+    )
+    assert corrector.fix_spelling("Tôi tên là nguyễn Văn An") == (
+        "Tôi tên là Nguyễn Văn An"
+    )
+
+
+@pytest.mark.unit
+def test_spell_corrector_leaves_abbreviations_and_common_words_lower_case() -> None:
+    from src.core.spell_corrector import VietnameseSpellCorrector
+
+    corrector = VietnameseSpellCorrector()
+
+    for text in ("các loại v.v. và nhiều", "đi từ Hà Nội", "chờ... rồi đi"):
+        assert corrector.fix_spelling(text) == text

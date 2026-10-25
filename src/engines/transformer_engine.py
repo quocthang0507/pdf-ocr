@@ -5,6 +5,8 @@ from importlib import import_module
 from pathlib import Path
 from typing import Any, cast
 
+import numpy as np
+
 from src.core.models import OCRPage
 from src.engines.base_engine import BaseOCREngine, ConfigField
 from src.engines.engine_registry import register_engine
@@ -34,6 +36,52 @@ def _valid_checkpoint(value: object) -> bool:
     if not isinstance(value, str) or not value.strip():
         return False
     return value in _CHECKPOINTS or "/" in value or Path(value).is_dir()
+
+
+#: TrOCR squeezes every crop into a square; past this width-to-height ratio
+#: a text line is so compressed that only its beginning gets read.
+MAX_LINE_ASPECT = 8.0
+
+
+def _widest_gap_centre(ink: np.ndarray) -> int:
+    """Centre of the widest run of the emptiest columns: a word space, not
+    the hairline gap between two letters."""
+    blank = ink <= ink.min()
+    best_start, best_length, start = 0, 0, None
+    for column, is_blank in enumerate([*blank.tolist(), False]):
+        if is_blank and start is None:
+            start = column
+        elif not is_blank and start is not None:
+            if column - start > best_length:
+                best_start, best_length = start, column - start
+            start = None
+    return best_start + best_length // 2
+
+
+def split_wide_line(crop: Any) -> list[Any]:
+    """Cut a long line image into readable pieces at the gaps between words."""
+    width, height = crop.size
+    if height <= 0 or width <= height * MAX_LINE_ASPECT:
+        return [crop]
+    gray = np.asarray(crop.convert("L"), dtype=np.float64)
+    ink = (gray < gray.mean() - 0.5 * gray.std()).sum(axis=0)
+    count = int(np.ceil(width / (height * MAX_LINE_ASPECT)))
+    step = width / count
+    reach = max(1, int(height * 1.5))
+    cuts = [0]
+    for index in range(1, count):
+        target = int(index * step)
+        low = max(cuts[-1] + 1, target - reach)
+        high = min(width - 1, target + reach)
+        if low >= high:
+            continue
+        cuts.append(low + _widest_gap_centre(ink[low:high]))
+    cuts.append(width)
+    return [
+        crop.crop((left, 0, right, height))
+        for left, right in zip(cuts, cuts[1:], strict=False)
+        if right - left > 1
+    ]
 
 
 @register_engine(
@@ -132,7 +180,32 @@ class TransformerOCREngine(BaseOCREngine):
 
         if self._processor is None or self._model is None:
             return []
-        pixels = self._processor(images=crops, return_tensors="pt").pixel_values
+        pieces: list[Any] = []
+        owners: list[int] = []
+        for index, crop in enumerate(crops):
+            for piece in split_wide_line(crop):
+                pieces.append(piece)
+                owners.append(index)
+        texts = self._generate(pieces)
+        joined = ["" for _ in crops]
+        for owner, text in zip(owners, texts, strict=False):
+            joined[owner] = f"{joined[owner]} {text.strip()}".strip()
+        lines: list[LineResult] = []
+        for (x, y, w, h), text in zip(boxes, joined, strict=False):
+            if text:
+                poly = (
+                    (float(x), float(y)),
+                    (float(x + w), float(y)),
+                    (float(x + w), float(y + h)),
+                    (float(x), float(y + h)),
+                )
+                lines.append((poly, text, 1.0))
+        return lines
+
+    def _generate(self, images: list[Any]) -> list[str]:
+        if self._processor is None or self._model is None:
+            return []
+        pixels = self._processor(images=images, return_tensors="pt").pixel_values
         pixels = pixels.to(self._resolved_device())
         max_new_tokens = cast(int, self._config["max_new_tokens"])
         timeout_seconds = cast(float, self._config["timeout_seconds"])
@@ -141,19 +214,12 @@ class TransformerOCREngine(BaseOCREngine):
             max_new_tokens=max_new_tokens,
             max_time=float(timeout_seconds),
         )
-        decoded = self._processor.batch_decode(generated, skip_special_tokens=True)
-        lines: list[LineResult] = []
-        for (x, y, w, h), text in zip(boxes, decoded, strict=False):
-            stripped = text.strip()
-            if stripped:
-                poly = (
-                    (float(x), float(y)),
-                    (float(x + w), float(y)),
-                    (float(x + w), float(y + h)),
-                    (float(x), float(y + h)),
-                )
-                lines.append((poly, stripped, 1.0))
-        return lines
+        return [
+            str(text)
+            for text in self._processor.batch_decode(
+                generated, skip_special_tokens=True
+            )
+        ]
 
     def _recognize(self, image: object, page_number: int) -> OCRPage:
         if self._processor is None or self._model is None:

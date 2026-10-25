@@ -153,7 +153,13 @@ ENGINE_PARAMETERS: dict[str, tuple[EngineParameter, ...]] = {
             "lang",
             "Ngôn ngữ",
             "vi",
-            "Ngôn ngữ chính của tài liệu.",
+            (
+                "Ngôn ngữ chính của tài liệu. Lưu ý: các model PaddleOCR chính "
+                "thức (PP-OCRv5/v6) không có chữ tiếng Việt mang dấu nặng, hỏi, "
+                "ngã và chữ hai dấu (ộ, ậ, ễ, ử, ọ...) nên sẽ bỏ sót các chữ này. "
+                "Với tài liệu tiếng Việt hãy dùng VietOCR hoặc Surya, hoặc chọn "
+                "một model nhận diện tiếng Việt tùy chỉnh bên dưới."
+            ),
             choices=(
                 ("Tiếng Việt", "vi"),
                 ("Tiếng Anh", "en"),

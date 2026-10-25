@@ -33,6 +33,26 @@ def _ensure_valid_image(image: Any) -> np.ndarray:
     return rgb
 
 
+def _text_mask(gray: np.ndarray) -> np.ndarray:
+    """Binary ink mask that survives uneven lighting.
+
+    A single global Otsu threshold turns the dark side of a shadowed or
+    gradient-lit page into "ink"; that made orientation detection rotate an
+    upright page by 90 degrees and threw the skew estimate off. The page is
+    first divided by an estimate of its own background, which a closing with
+    a kernel wider than any pen stroke recovers.
+    """
+    h, w = gray.shape[:2]
+    size = max(15, (min(h, w) // 60) | 1)
+    kernel = cv2.getStructuringElement(cv2.MORPH_RECT, (size, size))
+    background = cv2.morphologyEx(gray, cv2.MORPH_CLOSE, kernel)
+    flattened = cv2.divide(gray, np.maximum(background, 1), scale=255)
+    _, thresh = cv2.threshold(
+        flattened, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU
+    )
+    return thresh
+
+
 def _hough_skew(thresh: np.ndarray, width: int, max_angle: float) -> float | None:
     """Median angle of the long text lines, or None when none stand out."""
     lines = cv2.HoughLinesP(
@@ -81,7 +101,7 @@ def detect_skew_angle(image: np.ndarray, max_angle: float = 45.0) -> float:
     """
     rgb = _ensure_valid_image(image)
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    thresh = _text_mask(gray)
     points = cv2.findNonZero(thresh)
     if points is None or len(points) < 50:
         return 0.0
@@ -94,7 +114,7 @@ def detect_skew_angle(image: np.ndarray, max_angle: float = 45.0) -> float:
 def deskew_image(
     image: np.ndarray,
     angle: float | None = None,
-    background_color: tuple[int, int, int] = (255, 255, 255),
+    background_color: tuple[int, int, int] | None = None,
 ) -> tuple[np.ndarray, float]:
     """Rotate image to correct detected or provided skew angle.
 
@@ -102,6 +122,9 @@ def deskew_image(
         image: RGB input image.
         angle: Explicit skew angle in degrees. If None, angle is auto-detected.
         background_color: Fill color for borders introduced during rotation.
+            By default the page edge is replicated instead: a white wedge
+            against a grey, shadowed page leaves a hard edge that contrast
+            enhancement turns into dark streaks the OCR reads as text.
 
     Returns:
         tuple[np.ndarray, float]: (Deskewed RGB image, angle applied in degrees).
@@ -115,13 +138,16 @@ def deskew_image(
     h, w = rgb.shape[:2]
     center = (w / 2.0, h / 2.0)
     matrix = cv2.getRotationMatrix2D(center, -detected_angle, 1.0)
-    deskewed = cv2.warpAffine(
-        rgb,
-        matrix,
-        (w, h),
-        borderMode=cv2.BORDER_CONSTANT,
-        borderValue=background_color,
-    )
+    if background_color is None:
+        deskewed = cv2.warpAffine(rgb, matrix, (w, h), borderMode=cv2.BORDER_REPLICATE)
+    else:
+        deskewed = cv2.warpAffine(
+            rgb,
+            matrix,
+            (w, h),
+            borderMode=cv2.BORDER_CONSTANT,
+            borderValue=background_color,
+        )
     return deskewed, detected_angle
 
 
@@ -136,7 +162,7 @@ def detect_orientation(image: np.ndarray) -> int:
     """
     rgb = _ensure_valid_image(image)
     gray = cv2.cvtColor(rgb, cv2.COLOR_RGB2GRAY)
-    _, thresh = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY_INV + cv2.THRESH_OTSU)
+    thresh = _text_mask(gray)
 
     # Compute projection variance along horizontal vs vertical axes
     h_proj = np.sum(thresh, axis=1, dtype=np.float64)

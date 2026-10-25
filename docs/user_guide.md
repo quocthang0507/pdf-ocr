@@ -136,6 +136,8 @@ Cửa sổ chính được thiết kế theo bố cục của các trình đọc
 | **Chandra OCR** | • Biến thể: `datalab-to/chandra` (v1), `datalab-to/chandra-ocr-2` (5B flagship)<br>• Chế độ prompt: `ocr_layout` (giữ bố cục/bảng/toán), `ocr` (văn bản thuần)<br>• Backend: `hf` (cục bộ) hoặc `vllm` | Tài liệu phức tạp có công thức toán học, bảng biểu lồng nhau, biểu mẫu |
 | **dots.ocr** | • Biến thể: `rednote-hilab/dots.ocr` (1.7B VLM), `rednote-hilab/dots.mocr` (1.5 đa phương thức), `dots-studio/dots.ocr`<br>• Chế độ: `layout_all` (bố cục + bảng + chữ), `ocr` | Phân tích tài liệu thông minh bằng Vision-Language Model gọn nhẹ |
 
+> **Lưu ý về tiếng Việt với PaddleOCR:** các model nhận diện chính thức của PaddleOCR (PP-OCRv5, PP-OCRv6 và bản Latin) không có trong bộ ký tự các chữ mang dấu nặng, hỏi, ngã và chữ hai dấu (ộ, ậ, ễ, ử, ọ, ỉ…), nên sẽ **bỏ sót** những chữ này (ví dụ "Độc lập" thành "Đc lp"). Với tài liệu tiếng Việt, hãy dùng **VietOCR** hoặc **Surya**, hoặc nạp một model nhận diện tiếng Việt đã huấn luyện riêng vào ô *Model nhận diện tùy chỉnh*. Ứng dụng hiện thông báo nhắc khi bạn chuyển sang PaddleOCR.
+
 > **Nhập model tùy chỉnh của riêng bạn:** Trong ô chọn biến thể của bất kỳ mô hình nào, bạn có thể chọn **`+ Chọn tệp/thư mục model tùy chỉnh…`** (hoặc vào **Công cụ → Cài đặt**) để nạp trực tiếp tệp trọng số `.pth`, `.pdparams` hay thư mục checkpoint HuggingFace/Paddle đã huấn luyện riêng.
 
 ### 4.2. Các tùy chọn xử lý trên Dock phải
@@ -187,7 +189,10 @@ Các mô hình OCR nặng vài GB. Mặc định chúng nằm trong thư mục �
 > chứa `..` và những thư mục đích nằm bên trong thư mục nguồn.
 
 Sau khi đổi, các biến môi trường cache của PyTorch, HuggingFace, PaddleOCR và EasyOCR
-đều được chuyển hướng vào thư mục bạn chọn.
+đều được chuyển hướng vào thư mục bạn chọn — kể cả khi bạn đã dùng một mô hình trong phiên
+làm việc này, không cần khởi động lại ứng dụng. Mỗi mô hình có thư mục con riêng
+(`vietocr/`, `paddle/`, `easyocr/`, `trocr/`…); riêng các mô hình tải qua HuggingFace Hub
+(Surya, Chandra, dots.ocr) dùng chung thư mục `huggingface/hub/` bên trong thư mục đã chọn.
 
 ---
 

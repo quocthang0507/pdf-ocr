@@ -103,6 +103,19 @@ def test_switching_themes_replaces_the_whole_stylesheet(
     assert manager.current_theme == "light"
 
 
+def test_a_new_manager_reports_the_theme_on_screen_not_the_desktop_one(
+    qapp: QApplication, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Light interface on a dark-mode desktop must not be reported as dark."""
+    StyleManager(qapp).apply("light")
+    monkeypatch.setattr(style_module, "_system_theme", lambda: "dark")
+
+    fresh = StyleManager(qapp)
+
+    assert fresh.current_theme == "light"
+    assert fresh.selected_theme == "light"
+
+
 def test_applying_system_reports_the_resolved_theme(manager: StyleManager) -> None:
     resolved = manager.apply("system")
 

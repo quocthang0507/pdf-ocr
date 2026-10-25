@@ -185,6 +185,7 @@ class MainWindow(QMainWindow):
         self._activate(session)
         self.set_current_path(resolved)
         self._remember(resolved)
+        self.batch_status.clear_summary()
         self.statusBar().showMessage(f"Đã mở {resolved.name}")
         self.notifications.notify(f"Đã mở {resolved.name}", Severity.SUCCESS)
         self.document_opened.emit(str(resolved))
@@ -735,6 +736,8 @@ class MainWindow(QMainWindow):
     def _remember_options(self, options: dict[str, object]) -> None:
         previous = self._options.get("engine_id")
         self._options = dict(options)
+        if previous != options.get("engine_id"):
+            self._warn_about_vietnamese_support(options)
         if previous and previous != options.get("engine_id"):
             if self.comparison.region_panel.isVisibleTo(self.comparison):
                 name = engine_display_name(
@@ -743,6 +746,21 @@ class MainWindow(QMainWindow):
                 self.comparison.set_region_source(
                     f"Đã đổi sang mô hình {name}. Bấm “OCR bằng mô hình” để chạy lại."
                 )
+
+    def _warn_about_vietnamese_support(self, options: dict[str, object]) -> None:
+        """PaddleOCR's own recognisers lack many Vietnamese letters."""
+        params = options.get("engine_params")
+        params = params if isinstance(params, dict) else {}
+        if (
+            options.get("engine_id") == "paddle"
+            and params.get("lang", "vi") == "vi"
+            and not params.get("rec_model_dir")
+        ):
+            self.notifications.notify(
+                "PaddleOCR bỏ sót chữ tiếng Việt có dấu nặng, hỏi, ngã và chữ "
+                "hai dấu. Nên dùng VietOCR hoặc Surya cho tài liệu tiếng Việt.",
+                Severity.WARNING,
+            )
 
     def open_settings(self) -> None:
         dialog = SettingsDialog(parent=self)

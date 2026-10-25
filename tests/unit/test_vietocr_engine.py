@@ -75,6 +75,34 @@ def test_segment_lines_filters_grid_and_orders_text() -> None:
     assert boxes[0][1] < boxes[1][1]
 
 
+def test_detached_diacritics_are_folded_into_their_line() -> None:
+    """Tone marks rendered at scan resolution must not become their own lines."""
+    from src.engines.result_builder import merge_detached_marks
+
+    lines = [(100, 100, 900, 60), (100, 300, 900, 60)]
+    marks = [(200, 82, 30, 10), (600, 85, 26, 12), (500, 362, 30, 10)]
+
+    merged = merge_detached_marks(lines + marks)
+
+    assert merged == [(100, 82, 900, 78), (100, 300, 900, 72)]
+
+
+def test_a_mark_far_from_any_line_is_kept() -> None:
+    from src.engines.result_builder import merge_detached_marks
+
+    boxes = [(100, 100, 900, 60), (400, 400, 30, 10)]
+
+    assert merge_detached_marks(boxes) == boxes
+
+
+def test_merge_detached_marks_leaves_short_real_lines_alone() -> None:
+    from src.engines.result_builder import merge_detached_marks
+
+    lines = [(100, 100, 900, 50), (100, 160, 150, 48), (100, 220, 800, 50)]
+
+    assert merge_detached_marks(lines) == lines
+
+
 def test_vietocr_multi_line_page_recognition(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
@@ -121,3 +149,31 @@ def test_vietocr_multi_line_page_recognition(
 def test_vietocr_rejects_unknown_architecture(architecture: object) -> None:
     with pytest.raises(Exception, match="architecture"):
         VietOCREngine(config={"architecture": architecture})
+
+
+def test_lines_glued_by_tight_leading_are_split_apart() -> None:
+    """A descender touching the next line must not hide that line from OCR."""
+    from src.engines.result_builder import split_touching_lines
+
+    mask = np.zeros((44, 400), dtype=np.uint8)
+    for left in range(0, 400, 20):
+        mask[0:16, left : left + 10] = 255  # first line of glyphs
+        mask[28:44, left : left + 10] = 255  # second line of glyphs
+    mask[16:28, 4:6] = 255  # a descender bridging the two lines
+
+    pieces = split_touching_lines(mask, [(0, 0, 400, 44)])
+
+    assert len(pieces) == 2
+    first, second = sorted(pieces, key=lambda box: box[1])
+    assert first[1] == 0 and first[1] + first[3] <= 28
+    assert second[1] >= 16 and second[1] + second[3] == 44
+
+
+def test_a_single_tall_line_is_not_split() -> None:
+    from src.engines.result_builder import split_touching_lines
+
+    mask = np.zeros((30, 400), dtype=np.uint8)
+    for left in range(0, 400, 20):
+        mask[4:26, left : left + 10] = 255
+
+    assert split_touching_lines(mask, [(0, 4, 400, 22)]) == [(0, 4, 400, 22)]

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
     QGroupBox,
     QPushButton,
     QScrollArea,
+    QSizePolicy,
     QSpinBox,
     QVBoxLayout,
     QWidget,
@@ -52,6 +53,34 @@ def populate_device_combo(combo: QComboBox) -> None:
         combo.addItem(device.description, device.identifier)
         if isinstance(model, QStandardItemModel) and not device.available:
             model.item(combo.count() - 1).setEnabled(False)
+
+
+#: Characters a drop-down keeps visible before eliding; its popup shows full text.
+_COMBO_MIN_CHARS = 8
+
+
+def _fit_combo_to_panel(combo: QComboBox) -> None:
+    """Stop long item labels from widening the panel past the screen edge.
+
+    By default a combo box grows to its longest entry; inside a scroll area
+    without a horizontal bar that pushes every row of the form off-screen.
+    The closed box now follows the panel width while the popup list stays
+    wide enough to read each entry in full.
+    """
+    combo.setSizeAdjustPolicy(
+        QComboBox.SizeAdjustPolicy.AdjustToMinimumContentsLengthWithIcon
+    )
+    combo.setMinimumContentsLength(_COMBO_MIN_CHARS)
+    combo.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+
+    def widen_popup(*_args: object) -> None:
+        view = combo.view()
+        view.setMinimumWidth(view.sizeHintForColumn(0) + 24)
+
+    model = combo.model()
+    model.rowsInserted.connect(widen_popup)
+    model.modelReset.connect(widen_popup)
+    widen_popup()
 
 
 class SettingsDock(QWidget):
@@ -103,6 +132,8 @@ class SettingsDock(QWidget):
         }
         self._populate()
         self._build_layout()
+        for combo in self.findChildren(QComboBox):
+            _fit_combo_to_panel(combo)
         self.refresh_engine_parameters(self._weights_manager)
         self._connect_changes()
 

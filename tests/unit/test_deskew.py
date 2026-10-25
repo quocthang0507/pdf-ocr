@@ -126,3 +126,32 @@ def test_detect_orientation_horizontal_text() -> None:
     img = create_synthetic_text_image(0.0)
     orientation = detect_orientation(img)
     assert orientation in {0, 90, 180, 270}
+
+
+def _on_gradient(image: np.ndarray) -> np.ndarray:
+    """Darken the page from right to left, like a shadow across a scan."""
+    ramp = np.linspace(0.3, 1.0, image.shape[1])[None, :, None]
+    return (image.astype(np.float64) * ramp).astype(np.uint8)
+
+
+@pytest.mark.unit
+def test_uneven_lighting_does_not_flip_an_upright_page() -> None:
+    page = _on_gradient(create_synthetic_text_image(0.0))
+
+    assert detect_orientation(page) == 0
+
+
+@pytest.mark.unit
+def test_skew_is_measured_on_a_shadowed_page() -> None:
+    page = _on_gradient(create_synthetic_text_image(5.0))
+
+    assert abs(detect_skew_angle(page) - 5.0) < 0.8
+
+
+@pytest.mark.unit
+def test_deskew_does_not_paint_white_wedges_onto_a_grey_page() -> None:
+    grey = np.full((300, 300, 3), 140, dtype=np.uint8)
+
+    deskewed, _ = deskew_image(grey, angle=7.0)
+
+    assert int(deskewed.min()) == 140 and int(deskewed.max()) == 140

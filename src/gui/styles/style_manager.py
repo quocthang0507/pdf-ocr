@@ -61,8 +61,11 @@ class StyleManager:
         if not isinstance(resolved, QApplication):
             raise RuntimeError("Cần khởi tạo QApplication trước khi áp dụng giao diện.")
         self._application = resolved
-        self._selected = SYSTEM
-        self._current = _system_theme()
+        # Start from the theme already painted on screen: a fresh manager that
+        # assumed the desktop scheme reported "dark" under a light interface on
+        # a dark-mode desktop, and the tool bar icons were tinted invisible.
+        self._selected = StyleManager._active_selected or SYSTEM
+        self._current = StyleManager._active_current or _system_theme()
 
     @staticmethod
     def available_themes() -> tuple[str, ...]:

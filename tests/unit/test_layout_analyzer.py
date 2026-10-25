@@ -247,3 +247,121 @@ def test_analyze_classifies_typographic_headings_and_caption() -> None:
     assert labels["Mục nhỏ"] is BlockType.HEADING_3
     assert labels["Đoạn văn bình thường"] is BlockType.TEXT
     assert labels["Hình 1. Sơ đồ quy trình"] is BlockType.CAPTION
+
+
+def _scanned_letter() -> tuple[OCRBlock, ...]:
+    """Line boxes of a scanned Vietnamese application letter at 300 DPI."""
+    return (
+        _block("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", (139, 162, 2077, 271)),
+        _block("Độc lập - Tự do - Hạnh phúc", (135, 308, 1476, 405)),
+        _block("Kính gửi: Phòng Kế toán", (144, 562, 1289, 663)),
+        _block(
+            "Tôi tên là Nguyễn Văn An, sinh ngày 12 tháng 5.", (135, 691, 2902, 792)
+        ),
+        _block(
+            "Đề nghị quý phòng xem xét và giải quyết cho tôi", (135, 820, 2939, 921)
+        ),
+        _block("khoản trợ cấp theo quy định hiện hành.", (144, 950, 2660, 1051)),
+    )
+
+
+@pytest.mark.unit
+def test_a_blank_line_on_a_dense_page_still_breaks_the_paragraph() -> None:
+    merged = LayoutAnalyzer().merge_paragraphs(_scanned_letter())
+
+    assert [block.text for block in merged] == [
+        "CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM",
+        "Độc lập - Tự do - Hạnh phúc",
+        "Kính gửi: Phòng Kế toán",
+        "Tôi tên là Nguyễn Văn An, sinh ngày 12 tháng 5. Đề nghị quý phòng xem "
+        "xét và giải quyết cho tôi khoản trợ cấp theo quy định hiện hành.",
+    ]
+
+
+@pytest.mark.unit
+def test_a_short_line_followed_by_a_capital_ends_its_paragraph() -> None:
+    blocks = (
+        _block("Kính gửi: Ban giám đốc", (50, 60, 200, 80)),
+        _block(
+            "Tôi viết đơn này để đề nghị xem xét lại quyết định", (50, 84, 450, 104)
+        ),
+        _block("tăng", (50, 108, 90, 128)),
+        _block("trưởng của bộ phận kinh doanh trong quý vừa qua", (50, 132, 440, 152)),
+    )
+
+    merged = LayoutAnalyzer().merge_paragraphs(blocks)
+
+    assert [block.text for block in merged] == [
+        "Kính gửi: Ban giám đốc",
+        "Tôi viết đơn này để đề nghị xem xét lại quyết định tăng trưởng của "
+        "bộ phận kinh doanh trong quý vừa qua",
+    ]
+
+
+@pytest.mark.unit
+def test_word_boxes_on_one_row_are_read_as_a_line() -> None:
+    """EasyOCR-style word boxes must not be read column by column."""
+    words = (
+        _block("Hợp", (100, 100, 220, 140)),
+        _block("đồng", (232, 100, 392, 140)),
+        _block("này", (404, 100, 524, 140)),
+        _block("được", (100, 150, 220, 190)),
+        _block("lập", (232, 150, 392, 190)),
+        _block("thành", (404, 150, 524, 190)),
+    )
+    page = OCRPage(page_number=1, width=800, height=400, blocks=words)
+
+    analyzed = LayoutAnalyzer().analyze(page)
+
+    assert [block.text for block in analyzed.blocks] == ["Hợp đồng này được lập thành"]
+    assert [line.text for line in analyzed.blocks[0].lines] == [
+        "Hợp đồng này",
+        "được lập thành",
+    ]
+
+
+@pytest.mark.unit
+def test_scanned_line_height_jitter_is_not_mistaken_for_headings() -> None:
+    """Accents and descenders make some OCR line boxes taller than others."""
+    heights = (49, 50, 40, 36, 58, 52, 46, 40, 50, 47, 49, 40, 49, 58)
+    blocks = tuple(
+        _block(f"Dòng văn bản thường số {index}", (50, top, 900, top + height))
+        for index, (top, height) in enumerate(
+            zip(range(100, 100 + 70 * len(heights), 70), heights, strict=True)
+        )
+    )
+    page = OCRPage(page_number=1, width=1000, height=1200, blocks=blocks)
+
+    classified = LayoutAnalyzer().classify_blocks(page)
+
+    assert {block.block_type for block in classified.blocks} == {BlockType.TEXT}
+
+
+@pytest.mark.unit
+def test_overlapping_phrase_boxes_are_read_left_to_right() -> None:
+    """EasyOCR phrase boxes overlap; a taller one must not jump the queue."""
+    blocks = (
+        _block("cùng", (483, 535, 621, 615)),
+        _block("kỳ năm ngoái.", (616, 542, 959, 614)),
+        _block("người so với", (196, 541, 491, 617)),
+    )
+    page = OCRPage(page_number=1, width=1200, height=800, blocks=blocks)
+
+    analyzed = LayoutAnalyzer().analyze(page)
+
+    assert [block.text for block in analyzed.blocks] == [
+        "người so với cùng kỳ năm ngoái."
+    ]
+
+
+@pytest.mark.unit
+def test_an_ocr_capital_i_misread_for_l_does_not_break_the_paragraph() -> None:
+    blocks = (
+        _block("Ngành chế biến chế tạo tiếp tục dẫn đầu", (1282, 240, 2232, 313)),
+        _block("về số", (1287, 320, 1415, 372)),
+        _block("Iượng tuyển dụng mới. Các doanh nghiệp", (1279, 380, 2244, 448)),
+    )
+
+    merged = LayoutAnalyzer().merge_paragraphs(blocks)
+
+    assert len(merged) == 1

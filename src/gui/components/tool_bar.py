@@ -4,8 +4,9 @@ from __future__ import annotations
 
 from collections.abc import Mapping
 
-from PySide6.QtCore import QSize, Qt
-from PySide6.QtGui import QAction, QColor, QIcon, QImage, QPixmap
+from PySide6.QtCore import QByteArray, QSize, Qt
+from PySide6.QtGui import QAction, QColor, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtSvg import QSvgRenderer
 from PySide6.QtWidgets import QStyle, QToolBar, QWidget
 
 from src.gui.components.menu_bar import SEPARATOR
@@ -44,6 +45,60 @@ _STANDARD_ICONS: dict[str, QStyle.StandardPixmap] = {
 
 
 ICON_SIZE = 18
+
+#: Stroke colour of the line icons on the light tool bar.
+DEFAULT_ICON_COLOR = "#334155"
+
+# Line icons drawn on a 24 px grid. Platform style icons are unreliable here:
+# the Windows 11 style renders several of them (file, arrows) blank or so pale
+# that the buttons looked text-only.
+_SVG_ICONS: dict[str, str] = {
+    "open_file": '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 '
+    '2-2V9z"/><path d="M14 3v6h6"/>',
+    "open_folder": '<path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 '
+    '1-2 2H5a2 2 0 0 1-2-2z"/>',
+    "run_ocr": '<path d="M7 4l13 8-13 8z"/>',
+    "select_region": '<rect x="4" y="5" width="16" height="14" rx="1" '
+    'stroke-dasharray="3 2.5"/><path d="M9 12h6"/>',
+    "pdf_tools": '<path d="M4 20h4L19 9l-4-4L4 16z"/><path d="M13 7l4 4"/>',
+    "document_properties": '<circle cx="12" cy="12" r="9"/><path d="M12 11v6"/>'
+    '<path d="M12 7.5v.01"/>',
+    "export": '<path d="M12 4v11"/><path d="M7 10l5 5 5-5"/><path d="M4 20h16"/>',
+    "zoom_in": '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.4-4.4"/>'
+    '<path d="M8 11h6"/><path d="M11 8v6"/>',
+    "zoom_out": '<circle cx="11" cy="11" r="6.5"/><path d="M20 20l-4.4-4.4"/>'
+    '<path d="M8 11h6"/>',
+    "zoom_reset": '<path d="M4 9V4h5"/><path d="M20 9V4h-5"/><path d="M4 15v5h5"/>'
+    '<path d="M20 15v5h-5"/>',
+    "settings": '<path d="M4 7h9"/><path d="M19 7h1"/><circle cx="16" cy="7" r="2.5"/>'
+    '<path d="M4 17h3"/><path d="M13 17h7"/><circle cx="10" cy="17" r="2.5"/>',
+}
+
+
+def _svg_icon(key: str, colour: QColor, size: int = ICON_SIZE) -> QIcon:
+    """Render a bundled line icon at 1x and 2x so it stays crisp on HiDPI."""
+    body = _SVG_ICONS.get(key)
+    if body is None:
+        return QIcon()
+    svg = (
+        '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" '
+        f'stroke="{colour.name()}" stroke-width="2" stroke-linecap="round" '
+        f'stroke-linejoin="round">{body}</svg>'
+    )
+    renderer = QSvgRenderer(QByteArray(svg.encode("utf-8")))
+    if not renderer.isValid():
+        return QIcon()
+    icon = QIcon()
+    for scale in (1, 2):
+        pixmap = QPixmap(size * scale, size * scale)
+        pixmap.fill(Qt.GlobalColor.transparent)
+        painter = QPainter(pixmap)
+        painter.setRenderHint(QPainter.RenderHint.Antialiasing)
+        renderer.render(painter)
+        painter.end()
+        pixmap.setDevicePixelRatio(float(scale))
+        icon.addPixmap(pixmap)
+    return icon
 
 
 def _tint_pixmap(source: QPixmap, colour: QColor, scale: int) -> QPixmap:
@@ -112,22 +167,31 @@ class ApplicationToolBar(QToolBar):
             self.addAction(action)
 
     def _apply_icon(self, action: QAction, key: str) -> None:
-        """Use the platform style so the bundle carries no extra image assets."""
-        pixmap = _STANDARD_ICONS.get(key)
-        if pixmap is None or not action.icon().isNull():
+        """Prefer the bundled line icon; fall back to the platform style icon."""
+        if not action.icon().isNull():
             return
-        icon = self.style().standardIcon(pixmap)
+        icon = _svg_icon(key, QColor(DEFAULT_ICON_COLOR))
+        if icon.isNull():
+            pixmap = _STANDARD_ICONS.get(key)
+            if pixmap is None:
+                return
+            icon = self.style().standardIcon(pixmap)
         self._source_icons[key] = icon
         action.setIcon(icon)
 
     def apply_icon_color(self, colour: QColor | None) -> None:
         """Re-tint the icons, or restore the originals when None is given.
 
-        Style icons are drawn dark and disappear on a dark tool bar, so they
-        are re-tinted with a duotone map that keeps their internal shading.
+        Line icons are simply redrawn in the new colour; platform fallback
+        icons are re-tinted with a duotone map that keeps their shading.
         """
         for key, action in self._actions_by_key.items():
             source = self._source_icons.get(key)
             if source is None:
                 continue
+            if key in _SVG_ICONS:
+                redrawn = _svg_icon(key, colour or QColor(DEFAULT_ICON_COLOR))
+                if not redrawn.isNull():
+                    action.setIcon(redrawn)
+                    continue
             action.setIcon(source if colour is None else _tinted(source, colour))

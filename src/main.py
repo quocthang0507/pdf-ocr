@@ -49,9 +49,22 @@ def _apply_saved_appearance(application: QApplication) -> None:
         logger.warning("Không áp dụng được giao diện đã lưu: {}", error)
 
 
-def _prepare_weights_storage(window: MainWindow) -> None:
+def _saved_weights_dir() -> str | None:
     try:
-        ModelWeightsManager()
+        return ConfigManager().load().weights_dir
+    except (PDFOCRError, ValueError, OSError):
+        return None
+
+
+def _prepare_weights_storage(window: MainWindow) -> None:
+    """Point every model cache at the weights folder chosen in Settings.
+
+    This runs after the window built its pipeline; using the default folder
+    here used to overwrite the redirection to a custom folder, so Paddle and
+    HuggingFace models were downloaded next to the app instead.
+    """
+    try:
+        ModelWeightsManager(_saved_weights_dir())
     except PDFOCRError as error:
         logger.warning("Không chuẩn bị được thư mục weights: {}", error)
         QMessageBox.warning(window, "Thư mục weights", str(error))
