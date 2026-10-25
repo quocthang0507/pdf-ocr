@@ -25,6 +25,8 @@ class TextSpan:
 
 def render_page_transcript(
     page: OCRPage,
+    *,
+    confidence_threshold: float | None = None,
 ) -> tuple[str, tuple[TextSpan, ...], tuple[TextSpan, ...]]:
     """Lay out the transcript once, recording where each block and word landed."""
     parts: list[str] = []
@@ -36,9 +38,96 @@ def render_page_transcript(
             parts.append(BLOCK_SEPARATOR)
             cursor += len(BLOCK_SEPARATOR)
         start = cursor
-        cursor = _render_block_lines(block, parts, cursor, uncertain)
+        cursor = _render_block_lines(
+            block,
+            parts,
+            cursor,
+            uncertain,
+            confidence_threshold=confidence_threshold,
+        )
         blocks.append(TextSpan(start, cursor))
     return "".join(parts), tuple(blocks), tuple(uncertain)
+
+
+def find_search_spans(text: str, query: str) -> tuple[TextSpan, ...]:
+    """Find all case-insensitive occurrences of `query` in `text`."""
+    clean = query.strip()
+    if not clean or not text:
+        return ()
+    lower_text = text.lower()
+    lower_query = clean.lower()
+    spans: list[TextSpan] = []
+    pos = 0
+    q_len = len(clean)
+    while True:
+        idx = lower_text.find(lower_query, pos)
+        if idx < 0:
+            break
+        spans.append(TextSpan(idx, idx + q_len))
+        pos = idx + q_len
+    return tuple(spans)
+
+
+def summarize_page_structure(
+    page: OCRPage, uncertain_count: int
+) -> tuple[str, list[str]]:
+    """Return `(summary_label_text, table_combo_labels)` for a recognised page."""
+    counts = {kind: 0 for kind in BlockType}
+    for block in page.blocks:
+        counts[block.block_type] += 1
+    table_labels: list[str] = []
+    for position, table in enumerate(page.tables, start=1):
+        columns = len(table.rows[0]) if table.rows else 0
+        table_labels.append(f"Bảng {position} ({len(table.rows)}×{columns})")
+    heading_count = sum(
+        counts[kind]
+        for kind in (
+            BlockType.TITLE,
+            BlockType.HEADING_1,
+            BlockType.HEADING_2,
+            BlockType.HEADING_3,
+        )
+    )
+    uncertain_suffix = (
+        f" · {uncertain_count} từ cần kiểm tra" if uncertain_count > 0 else ""
+    )
+    summary = (
+        f"Bố cục: {estimate_column_count(page.blocks)} cột · "
+        f"{counts[BlockType.TEXT]} đoạn · "
+        f"{heading_count} tiêu đề · "
+        f"{counts[BlockType.CAPTION]} chú thích · "
+        f"{len(page.tables)} bảng · {counts[BlockType.IMAGE]} hình"
+        f"{uncertain_suffix}"
+    )
+    return summary, table_labels
+
+
+def match_table_for_block(page: OCRPage | None, index: int) -> int | None:
+    """Match a table block index to the extracted table drawn inside it."""
+    if page is None or not 0 <= index < len(page.blocks):
+        return None
+    block = page.blocks[index]
+    if block.block_type is not BlockType.TABLE:
+        return None
+    for position, table in enumerate(page.tables):
+        centre_x = (table.bbox.x1 + table.bbox.x2) / 2
+        centre_y = (table.bbox.y1 + table.bbox.y2) / 2
+        if (
+            block.bbox.x1 <= centre_x <= block.bbox.x2
+            and block.bbox.y1 <= centre_y <= block.bbox.y2
+        ):
+            return position
+    return None
+
+
+def match_block_for_table(page: OCRPage | None, position: int) -> int | None:
+    """Find the layout block index corresponding to a table index."""
+    if page is None or not 0 <= position < len(page.tables):
+        return None
+    for index in range(len(page.blocks)):
+        if match_table_for_block(page, index) == position:
+            return index
+    return None
 
 
 def estimate_column_count(blocks: tuple[OCRBlock, ...]) -> int:
@@ -83,7 +172,12 @@ def _should_break_line(prev_text: str, curr_text: str) -> bool:
 
 
 def _render_block_lines(
-    block: OCRBlock, parts: list[str], cursor: int, uncertain: list[TextSpan]
+    block: OCRBlock,
+    parts: list[str],
+    cursor: int,
+    uncertain: list[TextSpan],
+    *,
+    confidence_threshold: float | None = None,
 ) -> int:
     for line_index, line in enumerate(block.lines):
         if line_index:
@@ -103,7 +197,12 @@ def _render_block_lines(
                 parts.append(" ")
                 cursor += 1
             parts.append(word.text)
-            if word.is_low_confidence:
+            is_low = (
+                word.is_low_confidence
+                if confidence_threshold is None
+                else word.confidence < confidence_threshold
+            )
+            if is_low:
                 uncertain.append(TextSpan(cursor, cursor + len(word.text)))
             cursor += len(word.text)
     return cursor

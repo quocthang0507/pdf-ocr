@@ -236,3 +236,19 @@ def test_the_region_panel_leaves_the_editor_most_of_the_space(
 
     assert dock.region_panel.height() <= 220
     assert dock.editor.height() > dock.region_panel.height()
+
+
+def test_region_context_action_copies_image_and_emits_signal(
+    canvas: DocumentCanvas, qtbot, qapp
+) -> None:
+    canvas.set_region_mode(True)
+    _drag(canvas, QPoint(40, 40), QPoint(160, 120))
+    assert canvas.selected_region() is not None
+
+    with qtbot.waitSignal(canvas.region_context_action) as blocker:
+        canvas.trigger_region_action("copy_region_image")
+
+    action_id, bbox = blocker.args
+    assert action_id == "copy_region_image"
+    assert isinstance(bbox, BoundingBox)
+    assert not qapp.clipboard().pixmap().isNull()

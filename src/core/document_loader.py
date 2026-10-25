@@ -10,7 +10,7 @@ import numpy as np
 import pymupdf
 from PIL import Image
 
-from src.core.exceptions import DocumentLoadError
+from src.core.exceptions import DocumentLoadError, PasswordRequiredError
 from src.utils.image_utils import pil_to_ndarray, validate_image_dimensions
 from src.utils.logger import logger
 
@@ -58,16 +58,18 @@ class LoadedPage:
 class DocumentLoader:
     """Loader for PDF and multi-format image documents."""
 
-    def __init__(self, file_path: str | Path) -> None:
+    def __init__(self, file_path: str | Path, *, password: str | None = None) -> None:
         """Initialize DocumentLoader and open the document.
 
         Args:
             file_path: Path to the target file.
+            password: Optional password for encrypted PDF files.
 
         Raises:
             DocumentLoadError: If file is missing, empty, corrupt, or unsupported.
         """
         self._path = Path(file_path).resolve()
+        self._password = password
         self._validate_path()
 
         self._suffix = self._path.suffix.lower()
@@ -110,11 +112,12 @@ class DocumentLoader:
                 f"Tệp PDF '{self._path}' bị hỏng hoặc không thể mở: {err}"
             ) from err
 
-        if self._doc.is_encrypted or self._doc.needs_pass:
-            self._doc.close()
-            raise DocumentLoadError(
-                f"Tệp PDF '{self._path}' đã được khóa bảo vệ bằng mật khẩu."
-            )
+        if self._doc.needs_pass:
+            if not self._password or not self._doc.authenticate(self._password):
+                self._doc.close()
+                raise PasswordRequiredError(
+                    f"Tệp PDF '{self._path}' đã được khóa bảo vệ bằng mật khẩu."
+                )
 
         self._page_count = len(self._doc)
         if self._page_count == 0:

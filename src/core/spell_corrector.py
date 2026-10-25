@@ -185,12 +185,48 @@ def _match_case(source: str, target: str) -> str:
 class VietnameseSpellCorrector:
     """Contextual 1/2/3-gram and orthographic spell corrector for Vietnamese OCR."""
 
-    def __init__(self, dictionary_dir: str | Path | None = None) -> None:
+    def __init__(
+        self,
+        dictionary_dir: str | Path | None = None,
+        *,
+        custom_dictionary: str = "",
+    ) -> None:
         self._sym_1gram: Any = None
         self._sym_2gram: Any = None
         self._sym_3gram: Any = None
+        self._protected_words: set[str] = set()
+        self._custom_replacements: dict[str, str] = {}
+        self.load_custom_dictionary(custom_dictionary)
         if dictionary_dir is not None:
             self.load_symspell_dictionaries(dictionary_dir)
+
+    def load_custom_dictionary(self, raw: str) -> None:
+        """Parse user protected terms and 'wrong => right' replacement rules."""
+        self._protected_words.clear()
+        self._custom_replacements.clear()
+        if not raw or not raw.strip():
+            return
+        for entry in re.split(r"[\n,;]+", unicodedata.normalize("NFC", raw)):
+            cleaned = entry.strip()
+            if not cleaned:
+                continue
+            if "=>" in cleaned or "->" in cleaned:
+                sep = "=>" if "=>" in cleaned else "->"
+                left, right = (part.strip() for part in cleaned.split(sep, 1))
+                if left and right:
+                    self._custom_replacements[left.lower()] = right
+                    for tok in right.split():
+                        self._protected_words.add(tok.lower())
+            else:
+                self._protected_words.add(cleaned.lower())
+                for tok in cleaned.split():
+                    self._protected_words.add(tok.lower())
+
+    def is_protected(self, token: str) -> bool:
+        """Return whether a token is protected by the user dictionary."""
+        return (
+            unicodedata.normalize("NFC", token).strip().lower() in self._protected_words
+        )
 
     def load_symspell_dictionaries(
         self, dictionary_dir: str | Path, separator: str = "$"
@@ -237,9 +273,17 @@ class VietnameseSpellCorrector:
             return line
         words = [m.group(0) for m in matches]
         elig = [
-            is_valid_token(w) and not (idx > 0 and w[0].isupper() and w[1:].islower())
+            is_valid_token(w)
+            and w.lower() not in self._protected_words
+            and not (idx > 0 and w[0].isupper() and w[1:].islower())
             for idx, w in enumerate(words)
         ]
+        # 0. User custom replacements
+        for i, word in enumerate(words):
+            custom = self._custom_replacements.get(word.lower())
+            if custom is not None:
+                words[i] = _match_case(word, custom) if custom.islower() else custom
+                elig[i] = False
         # 1. Single-word orthographic fixes
         for i, word in enumerate(words):
             if not elig[i]:

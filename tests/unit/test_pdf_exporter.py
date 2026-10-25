@@ -132,3 +132,22 @@ def test_text_the_source_already_carries_is_not_duplicated(tmp_path: Path) -> No
     exported.close()
     assert words.count("Hello") == 1
     assert words.count("world") == 1
+
+
+@pytest.mark.parametrize("level", ["fast", "balanced", "max"])
+def test_pdf_exporter_supports_compression_levels(
+    scanned_source: Path, tmp_path: Path, level: str
+) -> None:
+    destination = tmp_path / f"compressed-{level}.pdf"
+    exporter = PDFExporter(compression_level=level)
+
+    exporter.export(_ocr_document(scanned_source), destination)
+
+    with pymupdf.open(destination) as exported:
+        assert exported.page_count == 1
+        assert exported[0].search_for("Hello")
+
+
+def test_pdf_exporter_rejects_unknown_compression_level() -> None:
+    with pytest.raises(ValueError, match="nén"):
+        PDFExporter(compression_level="ultra")

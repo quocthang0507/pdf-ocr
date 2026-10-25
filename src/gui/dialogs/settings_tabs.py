@@ -49,6 +49,12 @@ COMPRESSION_LABELS = {
     "max": "Tối đa (Thu gọn dung lượng mạnh nhất)",
 }
 
+TONE_STYLE_LABELS = {
+    "modern": "Kiểu mới (hoà, thuý, khoẻ)",
+    "traditional": "Truyền thống (hòa, thúy, khỏe — Nghị định 30)",
+    "preserve": "Giữ nguyên theo văn bản gốc",
+}
+
 
 def init_extended_controls(dialog: SettingsDialog) -> None:
     """Create all extended widgets on SettingsDialog across the 6 categories."""
@@ -96,16 +102,20 @@ def _init_spell_export_ai_controls(dialog: SettingsDialog) -> None:
     dialog.spell_correction_check = QCheckBox(
         "Tự động gợi ý và sửa lỗi chính tả tiếng Việt hậu xử lý (N-gram)", dialog
     )
+    dialog.tone_style_combo = QComboBox(dialog)
+    for key, label in TONE_STYLE_LABELS.items():
+        dialog.tone_style_combo.addItem(label, key)
     dialog.confidence_spin = QDoubleSpinBox(dialog)
     dialog.confidence_spin.setRange(0.50, 0.99)
     dialog.confidence_spin.setSingleStep(0.05)
     dialog.confidence_spin.setDecimals(2)
     dialog.custom_dict_edit = QPlainTextEdit(dialog)
     dialog.custom_dict_edit.setPlaceholderText(
-        "Nhập các từ viết tắt, tên riêng hoặc thuật ngữ chuyên ngành "
-        "(phân tách bằng dấu phẩy hoặc xuống dòng, ví dụ: UBND, HĐND, Bộ Tài chính)..."
+        "Nhập các từ bảo vệ hoặc quy tắc thay thế (ví dụ: UBND, cty => công ty, "
+        "hdnd -> Hội đồng nhân dân)..."
     )
     dialog.custom_dict_edit.setMaximumHeight(95)
+
     # 5. Export & PDF
     dialog.export_format_combo = QComboBox(dialog)
     for key, label in EXPORT_FORMAT_LABELS.items():
@@ -178,8 +188,10 @@ def build_dictionary_tab(dialog: SettingsDialog) -> QWidget:
     spell = QGroupBox("Kiểm tra chính tả và Độ tin cậy", page)
     form = QFormLayout(spell)
     form.addRow("", dialog.spell_correction_check)
+    form.addRow("Kiểu đặt dấu thanh (oa, oe, uy):", dialog.tone_style_combo)
     form.addRow("Ngưỡng cảnh báo từ độ tin cậy thấp:", dialog.confidence_spin)
-    user_dict = QGroupBox("Từ điển người dùng (Bỏ qua khi sửa lỗi chính tả)", page)
+    user_dict = QGroupBox("Từ điển người dùng (Từ bảo vệ và Quy tắc thay thế)", page)
+
     vbox = QVBoxLayout(user_dict)
     vbox.addWidget(dialog.custom_dict_edit)
     layout.addWidget(spell)

@@ -260,6 +260,22 @@ def test_encrypted_pdf_raises_document_load_error(sample_encrypted_pdf: Path) ->
 
 
 @pytest.mark.unit
+def test_encrypted_pdf_opens_with_valid_password_and_rejects_wrong_password(
+    sample_encrypted_pdf: Path,
+) -> None:
+    from src.core.exceptions import PasswordRequiredError
+
+    with pytest.raises(PasswordRequiredError):
+        DocumentLoader(sample_encrypted_pdf, password="wrong-password")
+
+    with DocumentLoader(sample_encrypted_pdf, password="secret123") as loader:
+        assert loader.page_count == 1
+        page = loader.load_page(1, dpi=150)
+        assert page.has_text_layer is True
+        assert page.extracted_text.strip() != ""
+
+
+@pytest.mark.unit
 def test_nonexistent_file_raises_document_load_error(tmp_path: Path) -> None:
     missing = tmp_path / "does_not_exist.pdf"
     with pytest.raises(DocumentLoadError, match="không tồn tại"):

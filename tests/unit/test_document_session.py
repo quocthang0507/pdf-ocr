@@ -72,6 +72,24 @@ def test_the_cache_stays_small(session: DocumentSession) -> None:
     assert session.cached_images() <= 2
 
 
+def test_session_cache_size_is_configurable_and_evicts_excess_pages(
+    tmp_path: Path,
+) -> None:
+    opened = DocumentSession(_pdf(tmp_path, pages=4), cache_size=3, color_mode="sepia")
+    try:
+        assert opened.cache_size == 3
+        assert opened.page_color_mode == "sepia"
+        for number in (1, 2, 3):
+            opened.image(number, dpi=72)
+        assert opened.cached_images() == 3
+
+        opened.set_cache_size(1)
+        assert opened.cache_size == 1
+        assert opened.cached_images() == 1
+    finally:
+        opened.close()
+
+
 def test_moving_between_pages_stays_inside_the_document(
     session: DocumentSession,
 ) -> None:
@@ -134,3 +152,49 @@ def test_a_scanned_page_offers_no_text(tmp_path: Path) -> None:
 
     assert scanned.native_text(1, dpi=72) == ""
     scanned.close()
+
+
+def test_document_session_restores_and_clears_cached_ocr_results(
+    tmp_path: Path,
+) -> None:
+    from src.services.settings_store import SettingsStore
+
+    pdf_path = _pdf(tmp_path, pages=2)
+    store = SettingsStore(tmp_path / "settings.db")
+    try:
+        first = DocumentSession(pdf_path, session_store=store)
+        first.store(_page(1))
+        first.close()
+
+        reopened = DocumentSession(pdf_path, session_store=store)
+        assert reopened.recognised_pages() == (1,)
+        assert reopened.result(1) == _page(1)
+
+        reopened.clear_results()
+        assert reopened.recognised_pages() == ()
+        reopened.close()
+
+        after_clear = DocumentSession(pdf_path, session_store=store)
+        assert after_clear.recognised_pages() == ()
+        after_clear.close()
+    finally:
+        store.close()
+
+
+def test_document_session_opens_encrypted_pdf_with_password(tmp_path: Path) -> None:
+    locked = tmp_path / "locked.pdf"
+    with pymupdf.open() as doc:
+        page = doc.new_page(width=200, height=100)
+        page.insert_text((20, 40), "Tai lieu mat 2026", fontsize=12)
+        doc.save(
+            locked,
+            encryption=pymupdf.PDF_ENCRYPT_AES_256,
+            owner_pw="owner",
+            user_pw="pass123",
+        )
+    opened = DocumentSession(locked, password="pass123")
+    try:
+        assert opened.page_count == 1
+        assert "Tai lieu mat 2026" in opened.native_text(1, dpi=72)
+    finally:
+        opened.close()

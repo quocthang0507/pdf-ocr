@@ -9,7 +9,7 @@ import numpy as np
 from PySide6.QtCore import QByteArray, QMimeData, QSettings, SignalInstance
 from PySide6.QtWidgets import QApplication, QMainWindow
 
-from src.config import ConfigManager
+from src.config import ConfigManager, Preferences
 from src.core.document_loader import SUPPORTED_EXTENSIONS
 from src.core.exceptions import PDFOCRError
 from src.core.models import BoundingBox
@@ -287,6 +287,23 @@ def open_document_properties_dialog(window: Any) -> None:
     dialog.exec()
 
 
+def _confirm_delete_page(window: Any, page_number: int) -> bool:
+    prefs = getattr(window, "_preferences", None)
+    if prefs is None or not getattr(prefs, "confirm_page_delete", False):
+        return True
+    from PySide6.QtWidgets import QMessageBox
+
+    msg = f"Bạn có chắc chắn muốn xóa vĩnh viễn trang {page_number} khỏi tệp PDF?"
+    reply = QMessageBox.question(
+        window,
+        "Xác nhận xóa trang",
+        msg,
+        QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+        QMessageBox.StandardButton.No,
+    )
+    return bool(reply == QMessageBox.StandardButton.Yes)
+
+
 def handle_page_context_action(window: Any, action_id: str, page_number: int) -> None:
     """Execute a right-click context action from NavigationDock's page list."""
     from PySide6.QtWidgets import QFileDialog
@@ -311,6 +328,8 @@ def handle_page_context_action(window: Any, action_id: str, page_number: int) ->
             Severity.SUCCESS,
         )
     elif action_id == "delete_page":
+        if not _confirm_delete_page(window, page_number):
+            return
         session.close()
         delete_pages_from_pdf(session.path, [page_number])
         reload_modified_pdf(window)
@@ -409,4 +428,149 @@ def connect_window_commands(window: Any) -> None:
     layout_action.setChecked(True)
     layout_action.toggled.connect(window.comparison.set_layout_visible)
     window.comparison.table_edited.connect(window._on_table_edited)
+    window.comparison.canvas.region_context_action.connect(
+        lambda act, reg: window.guarded(
+            lambda: handle_region_context_action(window, act, reg),
+            title="Tác vụ vùng chọn",
+        )
+    )
     window.recent_files_menu.file_selected.connect(window.open_path)
+
+
+def handle_region_context_action(
+    window: Any, action_id: str, region: BoundingBox
+) -> None:
+    """Handle a right-click context action on the selected region in DocumentCanvas."""
+    from src.core.pdf_editor import add_highlight_annotation, redact_region_in_pdf
+    from src.gui.components.notifications import Severity
+
+    window._last_region = region
+    if action_id == "ocr_region":
+        window.rerun_last_region_with_model()
+        return
+    if action_id == "copy_region_image":
+        window.notifications.notify(
+            "Đã sao chép ảnh vùng chọn vào bộ nhớ tạm.", Severity.INFO
+        )
+        return
+    if action_id == "open_pdf_tools":
+        open_pdf_tools_dialog(window)
+        return
+    session = window.document_session
+    norm = normalized_region_rect(region, window._displayed)
+    if session is None or not session.is_pdf or norm is None:
+        return
+    cur_page = session.current_page
+    session.close()
+    if action_id == "highlight_region":
+        add_highlight_annotation(session.path, cur_page, norm)
+        reload_modified_pdf(window)
+        window.notifications.notify("Đã tô sáng vùng chọn trên PDF.", Severity.SUCCESS)
+    elif action_id == "redact_region":
+        redact_region_in_pdf(session.path, cur_page, norm)
+        reload_modified_pdf(window)
+        window.notifications.notify("Đã che mật vùng chọn trên PDF.", Severity.SUCCESS)
+
+
+def load_safe_preferences() -> Preferences:
+    """Load Preferences from ConfigManager, falling back to defaults on error."""
+    try:
+        return ConfigManager(use_qsettings=False).load()
+    except Exception:
+        return Preferences()
+
+
+def apply_default_zoom_mode(window: Any, mode: str) -> None:
+    """Apply the configured default zoom mode onto the comparison canvas."""
+    canvas = window.comparison.canvas
+    if not canvas.has_page():
+        return
+    if mode == "fit_width":
+        canvas.fit_width()
+    elif mode == "actual_size":
+        canvas.set_zoom_factor(1.0)
+    else:
+        canvas.reset_zoom()
+
+
+def apply_preferences_to_window(window: Any, prefs: Preferences) -> None:
+    """Propagate all 6-category Preferences live across MainWindow and its docks."""
+    window._preferences = prefs
+    window.settings_dock.apply_preferences(prefs)
+    window.navigation_dock.set_thumbnails_enabled(prefs.show_thumbnails)
+    window.comparison.set_confidence_threshold(prefs.confidence_threshold)
+    window.comparison.set_spell_options(
+        custom_dictionary=prefs.custom_dictionary,
+        tone_style=prefs.tone_style,
+    )
+    postprocessor = getattr(getattr(window, "_pipeline", None), "postprocessor", None)
+    if postprocessor is not None and hasattr(postprocessor, "set_options"):
+        postprocessor.set_options(
+            tone_style=prefs.tone_style,
+            custom_dictionary=prefs.custom_dictionary,
+        )
+    for sess in getattr(window, "_sessions", {}).values():
+        sess.set_cache_size(prefs.cache_size_pages)
+        sess.set_page_color_mode(prefs.page_color_mode)
+    apply_reading_color_mode(window, prefs.page_color_mode)
+    apply_default_zoom_mode(window, prefs.default_zoom_mode)
+
+
+def default_export_dialog_args(
+    source_path: Path, prefs: Preferences
+) -> tuple[str, str, str]:
+    """Return (default_save_path, filter_str, default_label) using Preferences."""
+    from src.exporters import ExporterRegistry
+    from src.workers.export_worker import export_filters
+
+    filters = export_filters()
+    target_fmt = ExporterRegistry._resolve_id(prefs.default_export_format)
+    chosen_pair = next(
+        ((lbl, fmt) for lbl, fmt in filters if fmt == target_fmt),
+        filters[0],
+    )
+
+    default_label, default_format = chosen_pair
+    ext = ExporterRegistry.describe(default_format).extensions[0]
+    base_dir = Path(prefs.output_dir) if prefs.output_dir else source_path.parent
+    save_path = str(base_dir / f"{source_path.stem}{ext}")
+    filter_str = ";;".join(label for label, _f in filters)
+    return save_path, filter_str, default_label
+
+
+def create_document_session(window: Any, resolved: Path) -> Any:
+    """Create or retrieve a DocumentSession, prompting for a PDF password if locked."""
+    from src.core.exceptions import PasswordRequiredError
+    from src.gui.document_session import DocumentSession
+
+    existing = window._sessions.get(resolved)
+    if existing is not None:
+        return existing
+    prefs = getattr(window, "_preferences", Preferences())
+    session = DocumentSession(
+        resolved,
+        cache_size=prefs.cache_size_pages,
+        color_mode=prefs.page_color_mode,
+    )
+    try:
+        _ = session.page_count
+        return session
+    except PasswordRequiredError:
+        from PySide6.QtWidgets import QInputDialog, QLineEdit
+
+        pwd, ok = QInputDialog.getText(
+            window,
+            "Mở khóa PDF",
+            f"Tệp '{resolved.name}' được bảo vệ bằng mật khẩu:",
+            QLineEdit.EchoMode.Password,
+        )
+        if not ok or not pwd:
+            raise
+        unlocked = DocumentSession(
+            resolved,
+            cache_size=prefs.cache_size_pages,
+            color_mode=prefs.page_color_mode,
+            password=pwd,
+        )
+        _ = unlocked.page_count
+        return unlocked

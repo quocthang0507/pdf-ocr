@@ -2,6 +2,7 @@
 
 from enum import Enum
 
+APP_VERSION = "0.3.0"
 LOW_CONFIDENCE_THRESHOLD = 0.8
 
 

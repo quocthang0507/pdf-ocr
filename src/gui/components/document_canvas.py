@@ -10,6 +10,7 @@ from PySide6.QtCore import QPointF, QRect, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QContextMenuEvent,
     QFont,
     QKeyEvent,
     QMouseEvent,
@@ -20,11 +21,13 @@ from PySide6.QtGui import (
     QWheelEvent,
 )
 from PySide6.QtWidgets import (
+    QApplication,
     QGraphicsItem,
     QGraphicsPixmapItem,
     QGraphicsRectItem,
     QGraphicsScene,
     QGraphicsView,
+    QMenu,
     QWidget,
 )
 
@@ -90,6 +93,7 @@ class DocumentCanvas(QGraphicsView):
     block_selected = Signal(int)
     block_activated = Signal(int)
     region_selected = Signal(BoundingBox)
+    region_context_action = Signal(str, BoundingBox)
     zoom_changed = Signal(float)
     page_step_requested = Signal(int)
     region_mode_cancelled = Signal()
@@ -286,6 +290,43 @@ class DocumentCanvas(QGraphicsView):
             self.scene().removeItem(self._region_item)
         self._region_item = None
         self._region_origin = None
+
+    def trigger_region_action(self, action_id: str) -> None:
+        """Execute or emit a context action for the currently drawn region."""
+        region = self.selected_region()
+        if region is None:
+            return
+        if (
+            action_id == "copy_region_image"
+            and self._page_item is not None
+            and self._region_item is not None
+        ):
+            crop_rect = self._region_item.rect().toRect()
+            cropped = self._page_item.pixmap().copy(crop_rect)
+            QApplication.clipboard().setPixmap(cropped)
+        self.region_context_action.emit(action_id, region)
+
+    def contextMenuEvent(  # noqa: N802 - Qt override
+        self, event: QContextMenuEvent
+    ) -> None:
+        if self._region_item is None:
+            super().contextMenuEvent(event)
+            return
+        menu = QMenu(self)
+        actions = [
+            ("ocr_region", "Nhận dạng lại vùng chọn (OCR)"),
+            ("copy_region_image", "Sao chép ảnh vùng chọn"),
+            ("highlight_region", "Tô sáng vùng chọn trên PDF"),
+            ("redact_region", "Che mật (Redact) vùng chọn trên PDF"),
+            ("open_pdf_tools", "Mở Bộ công cụ PDF với vùng chọn…"),
+        ]
+        for act_id, label in actions:
+            act = menu.addAction(label)
+            act.triggered.connect(
+                lambda _checked=False, a=act_id: self.trigger_region_action(a)
+            )
+        menu.exec(event.globalPos())
+        event.accept()
 
     def mousePressEvent(self, event: QMouseEvent) -> None:  # noqa: N802
         if not self._region_mode or event.button() != Qt.MouseButton.LeftButton:

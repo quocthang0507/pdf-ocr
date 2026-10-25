@@ -132,3 +132,28 @@ def test_document_properties_dialog_displays_metadata_and_fonts(
 
     assert "2" in dlg.page_count_value.text()
     assert dlg.fonts_list.count() >= 1
+
+
+def test_navigation_dock_caches_thumbnails_across_status_refreshes(
+    qtbot, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    dock = NavigationDock()
+    qtbot.addWidget(dock)
+    session = DocumentSession(_sample_pdf(tmp_path))
+    calls: list[int] = []
+    orig_thumbnail = session.thumbnail
+
+    def counted_thumbnail(page_number: int, max_side: int = 140):
+        calls.append(page_number)
+        return orig_thumbnail(page_number, max_side=max_side)
+
+    monkeypatch.setattr(session, "thumbnail", counted_thumbnail)
+    try:
+        dock.set_session(session)
+        assert calls == [1, 2]
+
+        # Calling refresh_status() again should reuse cached QIcons without re-rendering
+        dock.refresh_status()
+        assert calls == [1, 2]
+    finally:
+        session.close()

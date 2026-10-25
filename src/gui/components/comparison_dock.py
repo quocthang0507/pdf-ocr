@@ -25,14 +25,18 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.constants import LOW_CONFIDENCE_COLOR, BlockType
+from src.constants import LOW_CONFIDENCE_COLOR, LOW_CONFIDENCE_THRESHOLD
 from src.core.models import BoundingBox, OCRPage, OCRTable
+from src.core.postprocessor import Postprocessor
 from src.core.spell_corrector import VietnameseSpellCorrector
 from src.gui.components.document_canvas import DocumentCanvas
 from src.gui.components.transcript_renderer import (
     TextSpan,
-    estimate_column_count,
+    find_search_spans,
+    match_block_for_table,
+    match_table_for_block,
     render_page_transcript,
+    summarize_page_structure,
 )
 from src.gui.dialogs.find_replace import FindReplaceDialog
 from src.gui.dialogs.table_editor import TableEditorDialog
@@ -94,7 +98,11 @@ class ComparisonDock(QWidget):
         self._page: OCRPage | None = None
         self._current_page = 0
         self._total_pages = 0
+        self._confidence_threshold: float = LOW_CONFIDENCE_THRESHOLD
+        self._custom_dictionary: str = ""
+        self._tone_style: str = "modern"
         self._init_nav_controls()
+
         self.table_editor: TableEditorDialog | None = None
         self.find_replace_dialog: FindReplaceDialog | None = None
         self._syncing = False
@@ -358,13 +366,35 @@ class ComparisonDock(QWidget):
         nav_layout.addLayout(page_row)
         return nav_bar
 
+    def set_confidence_threshold(self, threshold: float) -> None:
+        """Update the low-confidence warning threshold and re-highlight live."""
+        self._confidence_threshold = float(threshold)
+        if self._page is None:
+            return
+        _, _, self._uncertain_spans = render_page_transcript(
+            self._page, confidence_threshold=self._confidence_threshold
+        )
+        self._uncertain_index = -1
+        with self._suspend_sync():
+            self._apply_extra_selections()
+        self._refresh_structure()
+
+    def set_spell_options(
+        self, *, custom_dictionary: str = "", tone_style: str = "modern"
+    ) -> None:
+        """Configure user dictionary rules and Vietnamese tone placement style."""
+        self._custom_dictionary = custom_dictionary
+        self._tone_style = tone_style
+
     def apply_spell_correction(self) -> None:
         """Run contextual Vietnamese N-gram spell correction on the transcript."""
         current = self.editor.toPlainText()
         if not current.strip():
             self.spell_correction_applied.emit(False)
             return
-        corrected = VietnameseSpellCorrector().fix_spelling(current)
+        corrector = VietnameseSpellCorrector(custom_dictionary=self._custom_dictionary)
+        processor = Postprocessor(corrector, tone_style=self._tone_style)
+        corrected = processor.correct_text(current, spell_check=True)
         if corrected == current:
             self.spell_correction_applied.emit(False)
             return
@@ -383,24 +413,8 @@ class ComparisonDock(QWidget):
 
     def highlight_search_query(self, query: str) -> int:
         """Highlight all case-insensitive occurrences of `query` and focus the first."""
-        clean = query.strip()
-        text = self.editor.toPlainText()
-        if not clean or not text:
-            self._search_spans = ()
-            self._apply_extra_selections()
-            return 0
-        lower_text = text.lower()
-        lower_query = clean.lower()
-        spans: list[TextSpan] = []
-        pos = 0
-        q_len = len(clean)
-        while True:
-            idx = lower_text.find(lower_query, pos)
-            if idx < 0:
-                break
-            spans.append(TextSpan(idx, idx + q_len))
-            pos = idx + q_len
-        self._search_spans = tuple(spans)
+        spans = find_search_spans(self.editor.toPlainText(), query)
+        self._search_spans = spans
         self._apply_extra_selections()
         if spans:
             self._select_uncertain_span(spans[0])
@@ -503,8 +517,11 @@ class ComparisonDock(QWidget):
         """Show one recognised page beside the image it was recognised from."""
         if not isinstance(page, OCRPage):
             raise ValueError("Dữ liệu trang phải là đối tượng OCRPage.")
-        transcript, blocks, uncertain = render_page_transcript(page)
+        transcript, blocks, uncertain = render_page_transcript(
+            page, confidence_threshold=self._confidence_threshold
+        )
         self._block_spans = blocks
+
         self._uncertain_spans = uncertain
         self._search_spans = ()
         self._uncertain_index = -1
@@ -608,12 +625,11 @@ class ComparisonDock(QWidget):
             self.table_combo.blockSignals(False)
             self.structure_panel.hide()
             return
-        counts = {kind: 0 for kind in BlockType}
-        for block in page.blocks:
-            counts[block.block_type] += 1
-        for position, table in enumerate(page.tables, start=1):
-            columns = len(table.rows[0]) if table.rows else 0
-            self.table_combo.addItem(f"Bảng {position} ({len(table.rows)}×{columns})")
+        summary, table_labels = summarize_page_structure(
+            page, len(self._uncertain_spans)
+        )
+        for label in table_labels:
+            self.table_combo.addItem(label)
         self.table_combo.blockSignals(False)
         has_tables = bool(page.tables)
         has_uncertain = bool(self._uncertain_spans)
@@ -621,26 +637,7 @@ class ComparisonDock(QWidget):
         self.edit_table_button.setVisible(has_tables)
         self.uncertain_prev_btn.setVisible(has_uncertain)
         self.uncertain_next_btn.setVisible(has_uncertain)
-        heading_count = sum(
-            counts[kind]
-            for kind in (
-                BlockType.TITLE,
-                BlockType.HEADING_1,
-                BlockType.HEADING_2,
-                BlockType.HEADING_3,
-            )
-        )
-        uncertain_suffix = (
-            f" · {len(self._uncertain_spans)} từ cần kiểm tra" if has_uncertain else ""
-        )
-        self.structure_label.setText(
-            f"Bố cục: {estimate_column_count(page.blocks)} cột · "
-            f"{counts[BlockType.TEXT]} đoạn · "
-            f"{heading_count} tiêu đề · "
-            f"{counts[BlockType.CAPTION]} chú thích · "
-            f"{len(page.tables)} bảng · {counts[BlockType.IMAGE]} hình"
-            f"{uncertain_suffix}"
-        )
+        self.structure_label.setText(summary)
         self.structure_panel.show()
 
     def _show_table_on_canvas(self, position: int) -> None:
@@ -650,28 +647,11 @@ class ComparisonDock(QWidget):
             self.canvas.focus_on_block(block_index)
 
     def _block_for_table(self, position: int) -> int | None:
-        if self._page is None or not 0 <= position < len(self._page.tables):
-            return None
-        for index in range(len(self._page.blocks)):
-            if self._table_for_block(index) == position:
-                return index
-        return None
+        return match_block_for_table(self._page, position)
 
     def _table_for_block(self, index: int) -> int | None:
         """Match a table block to the extracted table drawn inside it."""
-        if self._page is None or not 0 <= index < len(self._page.blocks):
-            return None
-        block = self._page.blocks[index]
-        if block.block_type is not BlockType.TABLE:
-            return None
-        for position, table in enumerate(self._page.tables):
-            centre_x = (table.bbox.x1 + table.bbox.x2) / 2
-            centre_y = (table.bbox.y1 + table.bbox.y2) / 2
-            inside_x = block.bbox.x1 <= centre_x <= block.bbox.x2
-            inside_y = block.bbox.y1 <= centre_y <= block.bbox.y2
-            if inside_x and inside_y:
-                return position
-        return None
+        return match_table_for_block(self._page, index)
 
     def _publish_table_edit(self, index: int, table: OCRTable) -> None:
         if self._page is not None and 0 <= index < len(self._page.tables):

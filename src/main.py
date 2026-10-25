@@ -9,6 +9,7 @@ from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from src.config import ConfigManager
+from src.constants import APP_VERSION
 from src.core.exceptions import PDFOCRError
 from src.gui.i18n import TranslationManager
 from src.gui.main_window import APPLICATION_NAME, ORGANIZATION_NAME, MainWindow
@@ -32,7 +33,9 @@ def main(argv: list[str] | None = None) -> int:
     application = QApplication(argv if argv is not None else sys.argv)
     application.setOrganizationName(ORGANIZATION_NAME)
     application.setApplicationName(APPLICATION_NAME)
+    application.setApplicationVersion(APP_VERSION)
     _apply_saved_appearance(application)
+
     window = MainWindow()
     _prepare_weights_storage(window)
     window.show()

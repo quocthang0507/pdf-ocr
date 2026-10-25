@@ -440,6 +440,45 @@ def test_dock_rejects_a_dpi_outside_the_supported_range(dock: SettingsDock) -> N
     assert dock.options()["dpi"] == dock.dpi_spin.maximum()
 
 
+def test_preferences_apply_live_to_settings_dock_and_main_window(
+    qtbot, tmp_path: Path
+) -> None:
+    from PySide6.QtCore import QSettings
+
+    from src.gui.main_window import MainWindow
+    from src.gui.window_helpers import apply_preferences_to_window
+
+    store = QSettings(str(tmp_path / "live_prefs.ini"), QSettings.Format.IniFormat)
+    store.setFallbacksEnabled(False)
+    window = MainWindow(settings=store)
+    qtbot.addWidget(window)
+
+    prefs = Preferences(
+        default_engine="paddle",
+        default_dpi=450,
+        device="cpu",
+        default_deskew=False,
+        default_denoise=False,
+        default_binarize=False,
+        auto_spell_correction=False,
+        page_color_mode="sepia",
+        show_thumbnails=False,
+        cache_size_pages=6,
+        default_zoom_mode="fit_width",
+    )
+    apply_preferences_to_window(window, prefs)
+
+    opts = window.ocr_options()
+    assert opts["engine_id"] == "paddle"
+    assert opts["dpi"] == 450
+    assert opts["device"] == "cpu"
+    assert opts["preprocessing"]["deskew"] is False
+    assert opts["preprocessing"]["enhance"] is False
+    assert opts["spell_check"] is False
+    assert window.navigation_dock.reading_mode_combo.currentData() == "sepia"
+    assert window.navigation_dock._show_thumbnails is False
+
+
 def test_dock_drop_downs_follow_the_panel_width(dock: SettingsDock) -> None:
     """Long model names must not push the options past the panel's right edge."""
     from PySide6.QtWidgets import QComboBox, QSizePolicy

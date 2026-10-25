@@ -18,12 +18,11 @@ from PySide6.QtWidgets import (
 )
 
 import src.gui.window_helpers as wh
-from src.constants import ICON_COLORS
+from src.constants import APP_VERSION, ICON_COLORS
 from src.core.exceptions import DocumentLoadError, PDFOCRError
 from src.core.models import BoundingBox, OCRPage, OCRTable
 from src.core.transcript import apply_transcript
 from src.core.transcript import reconstruct_paragraphs as _reconstruct_paragraphs
-from src.exporters.exporter_registry import ExporterRegistry
 from src.gui.components.comparison_dock import ComparisonDock
 from src.gui.components.menu_bar import (
     MENU_LAYOUT,
@@ -75,7 +74,6 @@ from src.utils.logger import logger
 from src.workers.batch_manager import BatchManager
 from src.workers.export_worker import (
     ExportWorker,
-    export_filters,
     resolve_export_target,
 )
 from src.workers.region_worker import (
@@ -131,6 +129,7 @@ class MainWindow(QMainWindow):
         self._jobs = QThreadPool(self)
         self._job_signals: set[QObject] = set()
         self._displayed: tuple[np.ndarray, int] | None = None
+        self._preferences = wh.load_safe_preferences()
         self.setWindowTitle(APPLICATION_NAME)
         self.setAcceptDrops(True)
         self.command_actions = create_actions(self)
@@ -178,7 +177,7 @@ class MainWindow(QMainWindow):
         if not is_supported_document(target):
             raise DocumentLoadError("Định dạng tệp này chưa được hỗ trợ.")
         resolved = target.resolve()
-        session = self._sessions.get(resolved) or DocumentSession(resolved)
+        session = wh.create_document_session(self, resolved)
         if session.page_count < 1:
             raise DocumentLoadError("Tài liệu không có trang nào.")
         self.set_region_mode(False)
@@ -189,6 +188,8 @@ class MainWindow(QMainWindow):
         self.statusBar().showMessage(f"Đã mở {resolved.name}")
         self.notifications.notify(f"Đã mở {resolved.name}", Severity.SUCCESS)
         self.document_opened.emit(str(resolved))
+        if self._preferences.auto_ocr_on_open:
+            self.request_ocr()
 
     def _activate(self, session: DocumentSession) -> None:
         """Make a document current, releasing the file of the previous one."""
@@ -235,6 +236,7 @@ class MainWindow(QMainWindow):
             image = session.image_for(result)
             self.comparison.set_page(result, image)
         self._displayed = (image, dpi)
+        wh.apply_default_zoom_mode(self, self._preferences.default_zoom_mode)
         self._refresh_page_controls()
 
     def _refresh_page_controls(self) -> None:
@@ -352,16 +354,16 @@ class MainWindow(QMainWindow):
         wh.connect_window_commands(self)
 
     def prompt_open_file(self) -> None:
+        start_dir = self._preferences.input_dir or str(Path.home())
         selected, _ = QFileDialog.getOpenFileName(
-            self, "Mở tệp", str(Path.home()), document_name_filter()
+            self, "Mở tệp", start_dir, document_name_filter()
         )
         if selected:
             self.open_path(selected)
 
     def prompt_open_folder(self) -> None:
-        selected = QFileDialog.getExistingDirectory(
-            self, "Mở thư mục", str(Path.home())
-        )
+        start_dir = self._preferences.input_dir or str(Path.home())
+        selected = QFileDialog.getExistingDirectory(self, "Mở thư mục", start_dir)
         if selected:
             self.open_folder(selected)
 
@@ -559,6 +561,7 @@ class MainWindow(QMainWindow):
                 task.document_path, single_page or task.page_number
             ),
             page_counter=(lambda _p: 1) if single_page else session.page_count,
+            max_workers=self._preferences.max_worker_threads,
         )
         dialog = BatchDialog(manager, documents, self)
         dialog.page_ready.connect(self._on_page_recognised)
@@ -635,14 +638,13 @@ class MainWindow(QMainWindow):
                 "Chưa có kết quả nhận diện. Hãy chạy OCR trước.", Severity.WARNING
             )
             return
-        filters = export_filters()
-        default_label, default_format = filters[0]
-        ext = ExporterRegistry.describe(default_format).extensions[0]
-        filter_str = ";;".join(label for label, _f in filters)
+        save_path, filter_str, default_label = wh.default_export_dialog_args(
+            session.path, self._preferences
+        )
         selected, chosen = QFileDialog.getSaveFileName(
             self,
             "Xuất tài liệu",
-            str(session.path.with_suffix(ext)),
+            save_path,
             filter_str,
             default_label,
         )
@@ -679,7 +681,10 @@ class MainWindow(QMainWindow):
         return False
 
     def show_about(self) -> None:
-        msg = f"{APPLICATION_NAME}\nNhận diện văn bản và chuyển đổi tài liệu."
+        msg = (
+            f"{APPLICATION_NAME} v{APP_VERSION}\n"
+            "Nhận diện văn bản và chuyển đổi tài liệu."
+        )
         QMessageBox.about(self, "Giới thiệu", msg)
 
     def _create_document_view(self) -> QWidget:
@@ -768,6 +773,9 @@ class MainWindow(QMainWindow):
         dialog.model_imported.connect(self._on_model_imported)
         dialog.language_changed.connect(lambda _code: self.retranslate())
         dialog.theme_changed.connect(self.apply_theme_colors)
+        dialog.preferences_applied.connect(
+            lambda prefs: wh.apply_preferences_to_window(self, prefs)
+        )
         dialog.exec()
 
     def _on_model_imported(self, engine_id: str, path: str) -> None:

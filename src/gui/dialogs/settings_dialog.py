@@ -113,7 +113,9 @@ class SettingsDialog(QDialog):
     denoise_check: QCheckBox
     binarize_check: QCheckBox
     spell_correction_check: QCheckBox
+    tone_style_combo: QComboBox
     confidence_spin: QDoubleSpinBox
+
     custom_dict_edit: QPlainTextEdit
     export_format_combo: QComboBox
     compression_combo: QComboBox
@@ -266,8 +268,10 @@ class SettingsDialog(QDialog):
         self.denoise_check.setChecked(prefs.default_denoise)
         self.binarize_check.setChecked(prefs.default_binarize)
         self.spell_correction_check.setChecked(prefs.auto_spell_correction)
+        _select_combo_data(self.tone_style_combo, prefs.tone_style)
         self.confidence_spin.setValue(prefs.confidence_threshold)
         self.custom_dict_edit.setPlainText(prefs.custom_dictionary)
+
         _select_combo_data(self.export_format_combo, prefs.default_export_format)
         _select_combo_data(self.compression_combo, prefs.pdf_compression_level)
         self.worker_threads_spin.setValue(prefs.max_worker_threads)
@@ -462,6 +466,7 @@ class SettingsDialog(QDialog):
             auto_spell_correction=self.spell_correction_check.isChecked(),
             confidence_threshold=float(self.confidence_spin.value()),
             custom_dictionary=self.custom_dict_edit.toPlainText().strip(),
+            tone_style=str(self.tone_style_combo.currentData()),
             default_export_format=str(self.export_format_combo.currentData()),
             pdf_compression_level=str(self.compression_combo.currentData()),
             max_worker_threads=int(self.worker_threads_spin.value()),

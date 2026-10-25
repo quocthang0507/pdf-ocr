@@ -23,6 +23,12 @@ class ExporterRegistry:
     """Process-wide exporter catalogue with lazy instance creation."""
 
     _exporters: dict[str, tuple[type[BaseExporter], ExporterMetadata]] = {}
+    _ALIASES: dict[str, str] = {"txt": "text", "md": "markdown"}
+
+    @classmethod
+    def _resolve_id(cls, format_id: str) -> str:
+        key = format_id.strip().lower()
+        return cls._ALIASES.get(key, key)
 
     @classmethod
     def register(
@@ -61,8 +67,9 @@ class ExporterRegistry:
 
     @classmethod
     def get(cls, format_id: str) -> BaseExporter:
+        resolved = cls._resolve_id(format_id)
         try:
-            exporter = cls._exporters[format_id][0]
+            exporter = cls._exporters[resolved][0]
         except KeyError as error:
             raise ExportError(
                 f"Không tìm thấy định dạng xuất '{format_id}'."
@@ -71,8 +78,9 @@ class ExporterRegistry:
 
     @classmethod
     def describe(cls, format_id: str) -> ExporterMetadata:
+        resolved = cls._resolve_id(format_id)
         try:
-            return cls._exporters[format_id][1]
+            return cls._exporters[resolved][1]
         except KeyError as error:
             raise ExportError(
                 f"Không tìm thấy định dạng xuất '{format_id}'."

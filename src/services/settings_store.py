@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hashlib
 import re
 import sqlite3
 import threading
@@ -11,6 +12,7 @@ from pathlib import Path
 from types import TracebackType
 
 from src.core.exceptions import ConfigError
+from src.core.models import OCRDocument, OCRPage
 from src.utils.file_utils import get_app_root
 from src.utils.logger import logger
 
@@ -18,6 +20,7 @@ DATABASE_NAME = "settings.db"
 PREFERENCES_SECTION = "preferences"
 SESSION_SECTION = "session"
 ENGINE_SECTION = "engine"
+OCR_CACHE_SECTION = "ocr_cache"
 
 _NAME_PATTERN = re.compile(r"[^\W_][\w .-]{0,63}", flags=re.UNICODE)
 _SCHEMA = (
@@ -46,6 +49,18 @@ def _value(value: str) -> str:
     if not isinstance(value, str):
         raise ValueError("Giá trị cấu hình phải là chuỗi văn bản.")
     return value
+
+
+def document_cache_key(path: str | Path) -> str:
+    """Compute a safe, deterministic SQLite key from a file's path, size, and mtime."""
+    resolved = Path(path).resolve()
+    try:
+        stat = resolved.stat()
+        fingerprint = f"{resolved}|{stat.st_size}|{stat.st_mtime_ns}"
+    except OSError:
+        fingerprint = str(resolved)
+    digest = hashlib.sha256(fingerprint.encode("utf-8")).hexdigest()[:40]
+    return f"doc_{digest}"
 
 
 class SettingsStore:
@@ -128,6 +143,30 @@ class SettingsStore:
 
         yield write
         self._execute(_UPSERT, pending)
+
+    # -- OCR page session cache -------------------------------------------
+
+    def save_ocr_pages(self, path: str | Path, pages: Sequence[OCRPage]) -> None:
+        """Persist recognised OCRPage items for a document keyed by file fingerprint."""
+        resolved = Path(path).resolve()
+        doc = OCRDocument(tuple(pages), source_path=str(resolved), title=resolved.stem)
+        self.set(OCR_CACHE_SECTION, document_cache_key(resolved), doc.to_json())
+
+    def load_ocr_pages(self, path: str | Path) -> dict[int, OCRPage]:
+        """Load cached OCRPage items for path, or return an empty dict on miss."""
+        raw = self.get(OCR_CACHE_SECTION, document_cache_key(path))
+        if not raw:
+            return {}
+        try:
+            doc = OCRDocument.from_json(raw)
+            return {page.page_number: page for page in doc.pages}
+        except (ValueError, TypeError):
+            logger.warning("Bản lưu đệm OCR của '{}' không hợp lệ; bỏ qua.", path)
+            return {}
+
+    def clear_ocr_pages(self, path: str | Path) -> None:
+        """Remove any cached OCRPage items for path."""
+        self.delete(OCR_CACHE_SECTION, document_cache_key(path))
 
     # -- lifecycle --------------------------------------------------------
 

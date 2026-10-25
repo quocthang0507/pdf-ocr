@@ -18,6 +18,7 @@ from src.core.spell_corrector import VietnameseSpellCorrector
 _TOKEN_PATTERN = re.compile(r"[^\W_]+", flags=re.UNICODE)
 _TONE_MARKS = {"\u0300", "\u0301", "\u0303", "\u0309", "\u0323"}
 _MODERN_TONE_PAIRS = {"oa", "oe", "uy"}
+_VALID_TONE_STYLES = ("modern", "traditional", "preserve")
 
 
 class Postprocessor:
@@ -28,13 +29,35 @@ class Postprocessor:
         spell_corrector: VietnameseSpellCorrector | None = None,
         *,
         spell_check: bool = True,
+        tone_style: str = "modern",
     ) -> None:
+        if tone_style not in _VALID_TONE_STYLES:
+            raise ValueError("Kiểu đặt dấu thanh tiếng Việt không hợp lệ.")
         self._spell_corrector = spell_corrector or VietnameseSpellCorrector()
         self._spell_check = spell_check
+        self._tone_style = tone_style
 
     @property
     def spell_corrector(self) -> VietnameseSpellCorrector:
         return self._spell_corrector
+
+    @property
+    def tone_style(self) -> str:
+        return self._tone_style
+
+    def set_options(
+        self,
+        *,
+        tone_style: str | None = None,
+        custom_dictionary: str | None = None,
+    ) -> None:
+        """Update postprocessing tone placement style and user dictionary live."""
+        if tone_style is not None:
+            if tone_style not in _VALID_TONE_STYLES:
+                raise ValueError("Kiểu đặt dấu thanh tiếng Việt không hợp lệ.")
+            self._tone_style = tone_style
+        if custom_dictionary is not None:
+            self._spell_corrector.load_custom_dictionary(custom_dictionary)
 
     def correct_text(self, text: str, *, spell_check: bool | None = None) -> str:
         if not isinstance(text, str):
@@ -44,7 +67,7 @@ class Postprocessor:
         use_spell = self._spell_check if spell_check is None else spell_check
         if use_spell:
             corrected = self._spell_corrector.fix_spelling(corrected)
-        return self._standardize_tone_positions(corrected)
+        return self._standardize_tone_positions(corrected, self._tone_style)
 
     def process_word(
         self, word: OCRWord, *, spell_check: bool | None = None
@@ -67,9 +90,11 @@ class Postprocessor:
         if use_spell and len(cleaned) > 1:
             joined = " ".join(w.text for w in cleaned)
             fixed_line = self._standardize_tone_positions(
-                self._spell_corrector.fix_spelling(joined)
+                self._spell_corrector.fix_spelling(joined),
+                self._tone_style,
             )
             tokens = fixed_line.split(" ")
+
             if len(tokens) == len(cleaned):
                 cleaned = [
                     w.with_updates(text=tok)
@@ -148,7 +173,11 @@ class Postprocessor:
         return "".join(characters)
 
     @staticmethod
-    def _standardize_tone_positions(text: str) -> str:
+    def _standardize_tone_positions(text: str, tone_style: str = "modern") -> str:
+        if tone_style == "preserve":
+            return unicodedata.normalize("NFC", text)
+        if tone_style == "traditional":
+            return Postprocessor._apply_traditional_tones(text)
         characters = list(text)
         for index in range(len(characters) - 1):
             first = unicodedata.normalize("NFD", characters[index])
@@ -163,4 +192,32 @@ class Postprocessor:
             )
             characters[index] = unicodedata.normalize("NFC", first_without_tone)
             characters[index + 1] = unicodedata.normalize("NFC", second + tones[0])
+        return unicodedata.normalize("NFC", "".join(characters))
+
+    @staticmethod
+    def _apply_traditional_tones(text: str) -> str:
+        characters = list(text)
+        for index in range(len(characters) - 1):
+            first = unicodedata.normalize("NFD", characters[index])
+            second = unicodedata.normalize("NFD", characters[index + 1])
+            pair = (first[0] + second[0]).lower()
+            tones = [mark for mark in second[1:] if mark in _TONE_MARKS]
+            first_has_tone = any(mark in _TONE_MARKS for mark in first[1:])
+            if pair not in _MODERN_TONE_PAIRS or not tones or first_has_tone:
+                continue
+            prev_base = (
+                unicodedata.normalize("NFD", characters[index - 1])[0].lower()
+                if index > 0
+                else ""
+            )
+            next_is_alpha = (
+                index + 2 < len(characters) and characters[index + 2].isalpha()
+            )
+            if prev_base == "q" or next_is_alpha:
+                continue
+            second_without_tone = second[0] + "".join(
+                mark for mark in second[1:] if mark not in _TONE_MARKS
+            )
+            characters[index] = unicodedata.normalize("NFC", first + tones[0])
+            characters[index + 1] = unicodedata.normalize("NFC", second_without_tone)
         return unicodedata.normalize("NFC", "".join(characters))

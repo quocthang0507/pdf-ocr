@@ -431,3 +431,44 @@ class SettingsDock(QWidget):
 
     def _publish(self) -> None:
         self.options_changed.emit(self.options())
+
+    def apply_preferences(self, prefs: Any) -> None:
+        """Synchronize default engine, DPI, device, and stage flags from Preferences."""
+        eng_idx = self.engine_combo.findData(getattr(prefs, "default_engine", ""))
+        if eng_idx >= 0:
+            self.engine_combo.blockSignals(True)
+            self.engine_combo.setCurrentIndex(eng_idx)
+            self.engine_combo.blockSignals(False)
+            self._sync_table_support()
+            self._sync_params()
+        dev_idx = self.device_combo.findData(getattr(prefs, "device", ""))
+        if dev_idx >= 0:
+            self.device_combo.blockSignals(True)
+            self.device_combo.setCurrentIndex(dev_idx)
+            self.device_combo.blockSignals(False)
+        dpi = getattr(prefs, "default_dpi", None)
+        if isinstance(dpi, int):
+            self.dpi_spin.blockSignals(True)
+            self.dpi_spin.setValue(dpi)
+            self.dpi_spin.blockSignals(False)
+        self._apply_stage_preferences(prefs)
+        self._publish()
+
+    def _apply_stage_preferences(self, prefs: Any) -> None:
+        deskew = self.preprocessing_boxes.get("deskew")
+        if deskew is not None and hasattr(prefs, "default_deskew"):
+            deskew.blockSignals(True)
+            deskew.setChecked(bool(prefs.default_deskew))
+            deskew.blockSignals(False)
+        enhance = self.preprocessing_boxes.get("enhance")
+        if enhance is not None and hasattr(prefs, "default_denoise"):
+            enhance.blockSignals(True)
+            enhance.setChecked(
+                bool(prefs.default_denoise or getattr(prefs, "default_binarize", False))
+            )
+            enhance.blockSignals(False)
+        spell = self.structure_boxes.get("spell_check")
+        if spell is not None and hasattr(prefs, "auto_spell_correction"):
+            spell.blockSignals(True)
+            spell.setChecked(bool(prefs.auto_spell_correction))
+            spell.blockSignals(False)

@@ -6,6 +6,7 @@ from pathlib import Path
 
 import pymupdf
 
+from src.config import PDF_COMPRESSION_LEVELS, ConfigManager
 from src.core.exceptions import ExportError
 from src.core.models import BoundingBox, OCRDocument, OCRPage, OCRWord
 from src.exporters.base_exporter import BaseExporter
@@ -17,11 +18,33 @@ _FONT_CANDIDATES = (
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     Path("C:/Windows/Fonts/arial.ttf"),
 )
+_SAVE_LEVEL_ARGS: dict[str, dict[str, object]] = {
+    "fast": {"garbage": 1, "deflate": False},
+    "balanced": {"garbage": 3, "deflate": True},
+    "max": {"garbage": 4, "deflate": True, "clean": True},
+}
 
 
 @register_exporter("pdf", "Searchable PDF", extensions=(".pdf",))
 class PDFExporter(BaseExporter):
     """Overlay OCR words invisibly without rasterizing the original pages."""
+
+    def __init__(self, *, compression_level: str | None = None) -> None:
+        if (
+            compression_level is not None
+            and compression_level not in PDF_COMPRESSION_LEVELS
+        ):
+            raise ValueError("Mức nén PDF không hợp lệ.")
+        self._compression_level = compression_level
+
+    def _resolve_save_kwargs(self) -> dict[str, object]:
+        level = self._compression_level
+        if level is None:
+            try:
+                level = ConfigManager(use_qsettings=False).load().pdf_compression_level
+            except Exception:
+                level = "balanced"
+        return dict(_SAVE_LEVEL_ARGS.get(level, _SAVE_LEVEL_ARGS["balanced"]))
 
     def _export(self, document: OCRDocument, output_path: Path) -> None:
         source_path = Path(document.source_path).expanduser()
@@ -38,7 +61,7 @@ class PDFExporter(BaseExporter):
             self._copy_pages(document, source_pdf, output)
             if document.title:
                 output.set_metadata({"title": document.title})
-            output_path.write_bytes(output.tobytes(garbage=4, deflate=True))
+            output_path.write_bytes(output.tobytes(**self._resolve_save_kwargs()))
         finally:
             output.close()
             if converted is not None:

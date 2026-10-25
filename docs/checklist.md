@@ -403,3 +403,41 @@
   - **Verify:** `pytest tests/gui/test_main_window.py tests/gui/test_comparison_dock.py tests/gui/test_theme_manager.py -v`
   - **Files:** `src/main.py`, `src/gui/components/tool_bar.py`, `src/gui/components/comparison_dock.py`, `src/gui/components/status_bar.py`, `src/gui/styles/dark_theme.qss`, `src/gui/styles/light_theme.qss`
 
+---
+
+### Giai Đoạn 10: Đồng Bộ Cài Đặt 6 Danh Mục, Mở Khóa PDF Bảo Mật, Lưu Phiên OCR, Dấu Thanh & Từ Điển Tiếng Việt, Xuất Hàng Loạt & Benchmark (v0.3.0)
+
+- [x] **Task 10.1: Kết nối đồng bộ `Preferences` (6 danh mục) vào `MainWindow`, `SettingsDock`, `NavigationDock`, `DocumentSession` và `PDFExporter`**
+  - **Mục tiêu:** Lắng nghe `preferences_applied` và áp dụng `Preferences` ngay khi khởi động: đồng bộ `default_engine`, `default_dpi`, cờ tiền xử lý, `auto_spell_correction` vào `SettingsDock`; đồng bộ `page_color_mode`, `show_thumbnails` vào `NavigationDock`; áp dụng `cache_size_pages`, `default_zoom_mode`, `auto_ocr_on_open`, `restore_session`, `confirm_page_delete`, `max_worker_threads`, `input_dir`, `output_dir`, `default_export_format` và `pdf_compression_level` (`fast`/`balanced`/`max`).
+  - **Acceptance:** Thay đổi bất kỳ tùy chọn nào trong 6 tab của `SettingsDialog` đều có hiệu lực tức thì trên toàn ứng dụng và khi khởi động lại.
+  - **Verify:** `pytest -m "unit or gui" tests/gui/test_settings_dialog.py tests/unit/test_pdf_exporter.py tests/unit/test_document_session.py -v`
+  - **Files:** `src/gui/main_window.py`, `src/gui/window_helpers.py`, `src/gui/components/settings_dock.py`, `src/gui/document_session.py`, `src/exporters/pdf_exporter.py`
+
+- [x] **Task 10.2: Hỗ trợ mở khóa PDF bảo mật mật khẩu (`PasswordRequiredError`) và lưu/khôi phục tự động kết quả OCR (`OCRSessionStore`)**
+  - **Mục tiêu:** Cho phép `DocumentLoader(path, password=...)` mở khóa tệp PDF mã hóa AES-256; hiển thị hộp thoại nhập mật khẩu khi mở tệp PDF có khóa; tự động lưu và khôi phục kết quả `OCRPage` đã nhận diện/chỉnh sửa trong SQLite (`SettingsStore`) theo đường dẫn + kích thước + `mtime` của tệp gốc.
+  - **Acceptance:** Mở được tệp PDF khóa mật khẩu khi nhập đúng mật khẩu; đóng và mở lại tài liệu đã nhận diện sẽ khôi phục ngay toàn bộ trang `✓ Đã OCR` và nội dung đã sửa mà không cần chạy lại mô hình.
+  - **Verify:** `pytest -m unit tests/unit/test_document_loader.py tests/unit/test_document_session.py tests/unit/test_settings_store.py -v`
+  - **Files:** `src/core/exceptions.py`, `src/core/document_loader.py`, `src/services/settings_store.py`, `src/gui/document_session.py`, `tests/unit/test_document_loader.py`
+
+- [x] **Task 10.3: Tùy chọn kiểu dấu thanh tiếng Việt (`traditional` / `modern` / `preserve`), từ điển cá nhân (`custom_dictionary`) và ngưỡng tin cậy động (`confidence_threshold`)**
+  - **Mục tiêu:** Bổ sung `tone_style` vào `Preferences` và `Postprocessor` (hỗ trợ cả kiểu cũ `hòa, thúy` và kiểu mới `hoà, thuý`); nạp từ bảo vệ và quy tắc `sai => đúng` từ `custom_dictionary` vào `VietnameseSpellCorrector`; truyền `confidence_threshold` xuống `ComparisonDock` để tô vàng và điều hướng từ nghi ngờ theo ngưỡng người dùng chọn.
+  - **Acceptance:** Chuyển đổi chuẩn xác dấu thanh kiểu cũ/mới không làm hỏng chữ `qu-` (`quyết`, `quốc`); bảo vệ đúng từ vựng chuyên ngành và thay thế đúng quy tắc cá nhân; cập nhật tức thì danh sách từ nghi ngờ khi đổi `confidence_threshold`.
+  - **Verify:** `pytest -m "unit or gui" tests/unit/test_postprocessor.py tests/unit/test_config.py tests/gui/test_comparison_dock.py -v`
+  - **Files:** `src/config.py`, `src/core/postprocessor.py`, `src/core/spell_corrector.py`, `src/gui/components/comparison_dock.py`, `tests/unit/test_postprocessor.py`
+
+
+- [x] **Task 10.4: Bộ nhớ đệm Thumbnail, Menu ngữ cảnh vùng chọn trên `DocumentCanvas` và Xuất hàng loạt (`Batch Export`)**
+
+  - **Mục tiêu:** Lưu đệm `QIcon` thumbnail trong `NavigationDock` và tải lười khi cuộn cho tài liệu > 40 trang; thêm menu chuột phải cho vùng chọn trên `DocumentCanvas` (OCR vùng chọn, Sao chép ảnh vùng chọn, Tô sáng PDF, Che mật PDF, Mở công cụ PDF); thêm tính năng **Xuất hàng loạt** trong `BatchDialog`.
+  - **Acceptance:** Cập nhật tiến độ OCR không dựng lại thumbnail thừa; menu chuột phải trên vùng chọn hoạt động đầy đủ; xuất hàng loạt nhiều tài liệu đã quét ra thư mục đích chỉ với 1 thao tác.
+  - **Verify:** `pytest -m gui tests/gui/test_navigation_dock.py tests/gui/test_region_selection.py tests/gui/test_batch_dialog.py -v`
+  - **Files:** `src/gui/components/navigation_dock.py`, `src/gui/components/document_canvas.py`, `src/gui/dialogs/batch_dialog.py`, `tests/gui/test_navigation_dock.py`, `tests/gui/test_batch_dialog.py`
+
+- [x] **Task 10.5: Bộ đo kiểm chất lượng OCR định lượng (`src/services/benchmark_service.py` — Nghiệm thu `SC-3` & `SC-4`)**
+
+  - **Mục tiêu:** Xây dựng `src/services/benchmark_service.py` tính toán độ chính xác ký tự (`CAR`), tỷ lệ lỗi ký tự (`CER`), tỷ lệ lỗi từ (`WER`) và độ trễ trung bình (`ms/trang`), xuất báo cáo định lượng Markdown/JSON để nghiệm thu `SC-3` và `SC-4`.
+  - **Acceptance:** Tính toán chính xác `CAR`, `CER`, `WER` trên văn bản tiếng Việt Unicode NFC và xuất báo cáo chuẩn xác; vượt qua toàn bộ cổng chất lượng dự án.
+  - **Verify:** `pytest -m unit tests/unit/test_benchmark_service.py -v`
+  - **Files:** `src/services/benchmark_service.py`, `tests/unit/test_benchmark_service.py`, `docs/release_notes.md`, `README.md`
+
+

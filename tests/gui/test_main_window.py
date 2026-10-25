@@ -932,8 +932,13 @@ def test_selecting_search_result_in_navigation_dock_navigates_and_highlights_que
 
 
 def test_window_supports_reading_color_modes_and_page_context_edits(
-    window: MainWindow, tmp_path: Path
+    window: MainWindow, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
+    from PySide6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(
+        QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes
+    )
     document = _pdf(tmp_path, pages=3)
     window.open_path(document)
     assert window.document_session is not None

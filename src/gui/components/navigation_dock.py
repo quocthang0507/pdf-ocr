@@ -71,7 +71,9 @@ class NavigationDock(QWidget):
         self.setMinimumWidth(235)
         self._session: DocumentSession | None = None
         self._show_thumbnails = True
+        self._thumbnail_cache: dict[tuple[int, int, str], QIcon] = {}
         self._init_file_card()
+
         self._init_tabs()
         layout = QVBoxLayout(self)
         layout.setContentsMargins(6, 6, 6, 6)
@@ -157,7 +159,11 @@ class NavigationDock(QWidget):
         self.page_list.setContextMenuPolicy(Qt.ContextMenuPolicy.CustomContextMenu)
         self.page_list.customContextMenuRequested.connect(self._show_page_context_menu)
         self.page_list.currentRowChanged.connect(self._on_page_row_changed)
+        self.page_list.verticalScrollBar().valueChanged.connect(
+            self._load_visible_thumbnails
+        )
         self.outline_tree = QTreeWidget(self.tabs)
+
         self.outline_tree.setObjectName("outline_tree")
         self.outline_tree.setHeaderHidden(True)
         self.outline_tree.itemClicked.connect(self._on_outline_clicked)
@@ -195,6 +201,8 @@ class NavigationDock(QWidget):
 
     def set_thumbnails_enabled(self, enabled: bool) -> None:
         self._show_thumbnails = enabled
+        if not enabled:
+            self._thumbnail_cache.clear()
         self.page_list.blockSignals(True)
         self.page_list.clear()
         self.page_list.blockSignals(False)
@@ -203,7 +211,9 @@ class NavigationDock(QWidget):
     def set_session(self, session: DocumentSession | None) -> None:
         """Bind to an open document session and populate pages and outline."""
         self._session = session
+        self._thumbnail_cache.clear()
         self.search_results.clear()
+
         self.search_summary_label.setText("")
         self.page_list.blockSignals(True)
         self.page_list.clear()
@@ -258,15 +268,46 @@ class NavigationDock(QWidget):
             self.page_list.setCurrentRow(session.current_page - 1)
         self.page_list.blockSignals(False)
 
-    @staticmethod
     def _attach_thumbnail(
-        session: DocumentSession, item: QListWidgetItem, page_number: int
+        self, session: DocumentSession, item: QListWidgetItem, page_number: int
     ) -> None:
+        key = (
+            page_number,
+            session.page_rotation(page_number),
+            session.page_color_mode,
+        )
+
+        cached = self._thumbnail_cache.get(key)
+        if cached is not None:
+            if item.icon().cacheKey() != cached.cacheKey():
+                item.setIcon(cached)
+            return
         try:
             thumb = session.thumbnail(page_number, max_side=56)
-            item.setIcon(_ndarray_to_icon(thumb))
+            icon = _ndarray_to_icon(thumb)
+            self._thumbnail_cache[key] = icon
+            item.setIcon(icon)
         except Exception as err:
             logger.debug("Không tạo được ảnh thu nhỏ trang {}: {}", page_number, err)
+
+    def _load_visible_thumbnails(self, _value: int = 0) -> None:
+        """Lazily render thumbnails for visible items beyond _MAX_EAGER_THUMBNAILS."""
+        session = self._session
+        if session is None or not self._show_thumbnails:
+            return
+        viewport = self.page_list.viewport().rect()
+        top_item = self.page_list.itemAt(viewport.topLeft())
+        bottom_item = self.page_list.itemAt(viewport.bottomLeft())
+        start = self.page_list.row(top_item) if top_item is not None else 0
+        end = (
+            self.page_list.row(bottom_item)
+            if bottom_item is not None
+            else min(self.page_list.count() - 1, start + 25)
+        )
+        for row in range(max(0, start), min(self.page_list.count(), end + 1)):
+            item = self.page_list.item(row)
+            if item is not None and item.icon().isNull():
+                self._attach_thumbnail(session, item, row + 1)
 
     @staticmethod
     def _page_badge_text(session: DocumentSession, page_number: int) -> str:

@@ -8,8 +8,10 @@ from pathlib import Path
 
 from PySide6.QtCore import Signal
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QDialogButtonBox,
+    QFileDialog,
     QHBoxLayout,
     QLabel,
     QListWidget,
@@ -20,8 +22,10 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from src.core.models import OCRPage
+from src.core.models import OCRDocument, OCRPage
+from src.exporters import ExporterRegistry
 from src.gui.components.status_bar import PAUSE_LABEL, RESUME_LABEL, format_duration
+from src.gui.dialogs.settings_tabs import EXPORT_FORMAT_LABELS
 from src.gui.i18n import localise_buttons
 from src.gui.styles.style_manager import (
     status_accent_color,
@@ -53,6 +57,7 @@ class BatchDialog(QDialog):
 
     batch_finished = Signal(BatchProgress)
     page_ready = Signal(PageTask, OCRPage)
+    batch_export_requested = Signal(str, str)
 
     def __init__(
         self,
@@ -71,6 +76,7 @@ class BatchDialog(QDialog):
         self._items: dict[str, QListWidgetItem] = {}
         self._expected: dict[str, int] = {}
         self._seen: dict[str, int] = {}
+        self._pages_by_doc: dict[str, dict[int, OCRPage]] = {}
         self.document_list = QListWidget(self)
         self.document_list.setObjectName("batch_documents")
         self.document_list.setAlternatingRowColors(True)
@@ -81,7 +87,15 @@ class BatchDialog(QDialog):
         self.summary_label.setObjectName("batch_summary")
         self.eta_label = QLabel("", self)
         self.eta_label.setObjectName("batch_dialog_eta")
+        self.export_format_combo = QComboBox(self)
+        self.export_format_combo.setObjectName("batch_export_format")
+        for fmt_key, fmt_label in EXPORT_FORMAT_LABELS.items():
+            self.export_format_combo.addItem(fmt_label, fmt_key)
+        self.export_all_button = QPushButton("Xuất tất cả…", self)
+        self.export_all_button.setObjectName("batch_dialog_export_all")
+        self.export_all_button.setEnabled(False)
         self.pause_button = QPushButton(PAUSE_LABEL, self)
+
         self.pause_button.setObjectName("batch_dialog_pause")
         self.cancel_button = QPushButton("Hủy", self)
         self.cancel_button.setObjectName("batch_dialog_cancel")
@@ -106,6 +120,8 @@ class BatchDialog(QDialog):
         controls.setSpacing(8)
         controls.addWidget(self.eta_label)
         controls.addStretch(1)
+        controls.addWidget(self.export_format_combo)
+        controls.addWidget(self.export_all_button)
         controls.addWidget(self.pause_button)
         controls.addWidget(self.cancel_button)
 
@@ -131,6 +147,7 @@ class BatchDialog(QDialog):
         self.manager.cancelled.connect(self._on_cancelled)
         self.pause_button.clicked.connect(self._toggle_pause)
         self.cancel_button.clicked.connect(self.cancel)
+        self.export_all_button.clicked.connect(self.prompt_batch_export)
 
     # -- running ----------------------------------------------------------
 
@@ -183,8 +200,48 @@ class BatchDialog(QDialog):
         )
 
     def _on_page_ready(self, task: PageTask, page: OCRPage) -> None:
+        self._pages_by_doc.setdefault(task.document_path, {})[page.page_number] = page
+        self.export_all_button.setEnabled(True)
         self._advance(task.document_path)
         self.page_ready.emit(task, page)
+
+    def export_completed_documents(
+        self, output_dir: str | Path, format_id: str | None = None
+    ) -> list[Path]:
+        """Export all recognized batch documents into `output_dir`."""
+        fmt = format_id or str(self.export_format_combo.currentData() or "docx")
+        exporter = ExporterRegistry.get(fmt)
+        ext = ExporterRegistry.describe(fmt).extensions[0]
+
+        target_folder = Path(output_dir)
+        target_folder.mkdir(parents=True, exist_ok=True)
+        exported: list[Path] = []
+        for doc_path_str, pages_map in self._pages_by_doc.items():
+            if not pages_map:
+                continue
+            src = Path(doc_path_str)
+            ordered_pages = tuple(pages_map[num] for num in sorted(pages_map))
+            ocr_doc = OCRDocument(
+                pages=ordered_pages,
+                source_path=str(src),
+                title=src.stem,
+            )
+            out_file = target_folder / f"{src.stem}{ext}"
+            exported.append(exporter.export(ocr_doc, out_file))
+        return exported
+
+    def prompt_batch_export(self) -> list[Path]:
+        """Prompt for an output folder and export all completed documents."""
+        folder = QFileDialog.getExistingDirectory(
+            self, "Chọn thư mục xuất hàng loạt", str(Path.home())
+        )
+        if not folder:
+            return []
+        fmt = str(self.export_format_combo.currentData() or "docx")
+        files = self.export_completed_documents(folder, fmt)
+        self.summary_label.setText(f"Đã xuất {len(files)} tài liệu vào {folder}.")
+        self.batch_export_requested.emit(fmt, folder)
+        return files
 
     def _on_page_failed(self, task: PageTask, message: str) -> None:
         self._seen[task.document_path] = self._seen.get(task.document_path, 0) + 1

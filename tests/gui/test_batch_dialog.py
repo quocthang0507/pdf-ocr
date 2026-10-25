@@ -340,3 +340,19 @@ def test_the_window_runs_a_batch_in_the_background(qtbot, tmp_path: Path) -> Non
     assert batch.progress_bar.value() == 100
     assert session.closed is True
     batch.close()
+
+
+def test_batch_dialog_exports_all_completed_documents(
+    dialog: BatchDialog, qtbot, tmp_path: Path
+) -> None:
+    with qtbot.waitSignal(dialog.batch_finished, timeout=TIMEOUT_MS):
+        dialog.start()
+        dialog.manager.wait_for_completion(TIMEOUT_MS)
+
+    assert dialog.export_all_button.isEnabled() is True
+    out_dir = tmp_path / "batch_exports"
+    exported = dialog.export_completed_documents(out_dir, "txt")
+
+    assert len(exported) == 2
+    assert all(path.is_file() for path in exported)
+    assert "trang 1" in exported[0].read_text(encoding="utf-8")

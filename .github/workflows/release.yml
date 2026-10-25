@@ -7,8 +7,9 @@ on:
   workflow_dispatch:
     inputs:
       tag:
-        description: "Optional release tag to publish (e.g. v0.2.0). Leave empty for build-only artifact run."
+        description: "Optional release tag to publish (e.g. v0.3.0). Leave empty for build-only artifact run."
         required: false
+
         default: ""
 
 permissions:

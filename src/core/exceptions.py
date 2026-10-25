@@ -40,6 +40,12 @@ class DocumentLoadError(PDFOCRError):
     default_message = "Không thể mở tài liệu. Vui lòng kiểm tra định dạng và mật khẩu."
 
 
+class PasswordRequiredError(DocumentLoadError):
+    """An encrypted PDF requires a user or owner password to unlock."""
+
+    default_message = "Tệp PDF được bảo vệ bằng mật khẩu. Vui lòng nhập mật khẩu để mở."
+
+
 class ConfigError(PDFOCRError):
     """Preferences or application logging could not be persisted."""
 

@@ -27,6 +27,7 @@ ZOOM_MODES = ("fit_page", "fit_width", "actual_size")
 PAGE_COLOR_MODES = ("normal", "sepia", "night")
 EXPORT_FORMATS = ("docx", "pdf", "txt", "md", "json", "xlsx")
 PDF_COMPRESSION_LEVELS = ("fast", "balanced", "max")
+TONE_STYLES = ("modern", "traditional", "preserve")
 
 
 @dataclass(frozen=True)
@@ -58,6 +59,8 @@ class Preferences:
     auto_spell_correction: bool = True
     confidence_threshold: float = 0.80
     custom_dictionary: str = ""
+    tone_style: str = "modern"
+
     # 5. Export & PDF Output
     default_export_format: str = "docx"
     pdf_compression_level: str = "balanced"
@@ -90,7 +93,10 @@ def _validate_preferences(prefs: Preferences) -> None:
         raise ValueError("DPI mặc định phải nằm trong khoảng 72..1200.")
     if not (0.50 <= float(prefs.confidence_threshold) <= 0.99):
         raise ValueError("Ngưỡng độ tin cậy phải nằm trong khoảng 0.50..0.99.")
+    if prefs.tone_style not in TONE_STYLES:
+        raise ValueError("Kiểu đặt dấu thanh tiếng Việt không hợp lệ.")
     if prefs.default_export_format not in EXPORT_FORMATS:
+
         raise ValueError("Định dạng xuất mặc định không hợp lệ.")
     if prefs.pdf_compression_level not in PDF_COMPRESSION_LEVELS:
         raise ValueError("Mức nén PDF không hợp lệ.")
@@ -150,6 +156,7 @@ def _build_preferences(values: Mapping[str, str]) -> Preferences:
         auto_spell_correction=_parse_bool(fields.get("auto_spell_correction"), True),
         confidence_threshold=float(fields.get("confidence_threshold") or 0.80),
         custom_dictionary=values.get("custom_dictionary", ""),
+        tone_style=fields.get("tone_style") or "modern",
         default_export_format=fields.get("default_export_format") or "docx",
         pdf_compression_level=fields.get("pdf_compression_level") or "balanced",
         max_worker_threads=int(fields.get("max_worker_threads") or 4),

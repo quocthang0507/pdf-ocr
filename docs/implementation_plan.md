@@ -753,3 +753,22 @@ Tài liệu [docs/checklist.md](file:///d:/GitHub/pdf-ocr/docs/checklist.md) là
 14. **Hiệu năng & Độ mượt:** Ứng dụng phải chạy mượt trên cấu hình phổ thông: mọi tác vụ nặng chạy nền (`QThreadPool`/`QRunnable`), giao diện không bao giờ bị khóa, giải phóng bộ nhớ sau mỗi trang.
 15. **Chống lỗi & Chống treo:** Error Boundary bắt trọn mọi ngoại lệ tại tầng GUI, không để exception thoát ra vòng lặp sự kiện; tác vụ nền báo lỗi qua tín hiệu thay vì làm sập ứng dụng.
 16. **Hệ thống thông báo tùy chỉnh (Custom Notifications):** Thay cho việc lạm dụng `QMessageBox`, ứng dụng dùng **thông báo toast trong ứng dụng** (thành công / cảnh báo / lỗi / thông tin), tự ẩn sau thời gian ngắn, có thể xếp chồng và không chặn thao tác người dùng.
+
+---
+
+## 13. Đặc Tả Mở Rộng v0.3.0 — Đồng Bộ Cài Đặt, Mở Khóa & Lưu Phiên OCR, Dấu Thanh Tiếng Việt, Xuất Hàng Loạt & Benchmark
+
+1. **Đồng bộ hóa trực tiếp 6 danh mục Cài đặt (`Preferences` Live Wiring):**
+   - Toàn bộ 18 tùy chọn trong `Preferences` (`restore_session`, `confirm_page_delete`, `default_zoom_mode`, `page_color_mode`, `show_thumbnails`, `cache_size_pages`, `default_engine`, `default_dpi`, `auto_ocr_on_open`, `default_deskew`, `default_denoise`, `default_binarize`, `auto_spell_correction`, `tone_style`, `confidence_threshold`, `custom_dictionary`, `default_export_format`, `pdf_compression_level`, `max_worker_threads`) được kết nối trực tiếp vào `MainWindow`, `SettingsDock`, `NavigationDock`, `DocumentSession`, `ComparisonDock`, `BatchManager` và `PDFExporter`.
+2. **Mở khóa PDF bảo mật AES-256 & Lưu phiên nhận diện (`OCRSessionStore`):**
+   - `DocumentLoader` hỗ trợ tham số `password: str | None = None`, ném `PasswordRequiredError` khi tệp PDF cần mật khẩu để giao diện nhắc người dùng nhập mật khẩu an toàn.
+   - `DocumentSession` tự động lưu/khôi phục các trang đã nhận diện (`OCRPage`) trong SQLite (`SettingsStore`, section `ocr_sessions`) gắn với dấu vân tay tệp (`path`, `size`, `mtime_ns`).
+3. **Chuẩn hóa dấu thanh tiếng Việt linh hoạt & Từ điển cá nhân:**
+   - Hỗ trợ 3 chế độ dấu thanh (`tone_style`): `traditional` (`hòa, thúy` — chuẩn văn thư hành chính), `modern` (`hoà, thuý`), và `preserve` (giữ nguyên).
+   - `VietnameseSpellCorrector` nạp `custom_dictionary` hỗ trợ danh sách từ bảo vệ và quy tắc thay thế `sai => đúng`.
+4. **Tối ưu Thumbnail, Menu ngữ cảnh vùng chọn & Xuất hàng loạt (`Batch Export`):**
+   - Lưu đệm `QIcon` thumbnail theo trang/góc xoay và nạp lười khi cuộn cho tài liệu lớn.
+   - Menu ngữ cảnh chuột phải ngay trên vùng chọn của `DocumentCanvas` (OCR vùng chọn, Sao chép ảnh vùng chọn, Tô sáng PDF, Che mật PDF, Mở công cụ PDF).
+   - Nút **Xuất hàng loạt** trong `BatchDialog` xuất toàn bộ các tài liệu đã quét ra thư mục đích chỉ với 1 chạm.
+5. **Bộ đo kiểm chất lượng OCR định lượng (`BenchmarkService`):**
+   - Tính toán `CAR` (Character Accuracy Rate), `CER` (Character Error Rate), `WER` (Word Error Rate) và độ trễ trung bình (`ms/trang`) để nghiệm thu định lượng `SC-3` và `SC-4`.

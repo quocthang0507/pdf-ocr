@@ -295,6 +295,29 @@ class LayoutAnalyzer:
             return False
         return not (text[0] == "I" and text[1:2].islower())
 
+    @staticmethod
+    def _geometry_allows_merge(
+        b1: BoundingBox,
+        b2: BoundingBox,
+        line_gap: float | None = None,
+    ) -> tuple[bool, float, float]:
+        """Return (allowed, gap, line_height) for vertical/horizontal alignment."""
+        if b2.y1 < b1.y1 - 4.0:
+            return False, 0.0, 1.0
+        gap = b2.y1 - b1.y2
+        line_height = max((b1.height + b2.height) / 2.0, 1.0)
+        if gap > 1.8 * line_height or gap < -0.6 * line_height:
+            return False, gap, line_height
+        if line_gap is not None and gap > line_gap + 0.5 * line_height:
+            return False, gap, line_height
+        overlap_x = min(b1.x2, b2.x2) - max(b1.x1, b2.x1)
+        min_width = min(b1.width, b2.width)
+        if min_width > 0 and (overlap_x / min_width) < 0.25:
+            return False, gap, line_height
+        if abs(b1.x1 - b2.x1) > max(b1.width, b2.width) * 0.45:
+            return False, gap, line_height
+        return True, gap, line_height
+
     def _should_merge_blocks(
         self,
         current: OCRBlock,
@@ -306,65 +329,36 @@ class LayoutAnalyzer:
             or candidate.block_type != BlockType.TEXT
         ):
             return False
-
         b1 = current.lines[-1].bbox if current.lines else current.bbox
         b2 = candidate.lines[0].bbox if candidate.lines else candidate.bbox
-
-        if b2.y1 < b1.y1 - 4.0:
-            return False
-
-        gap = b2.y1 - b1.y2
-        line_height = max((b1.height + b2.height) / 2.0, 1.0)
-
-        if gap > 1.8 * line_height or gap < -0.6 * line_height:
-            return False
-        if line_gap is not None and gap > line_gap + 0.5 * line_height:
-            return False
-
-        overlap_x = min(b1.x2, b2.x2) - max(b1.x1, b2.x1)
-        min_width = min(b1.width, b2.width)
-        if min_width > 0 and (overlap_x / min_width) < 0.25:
-            return False
-
-        if abs(b1.x1 - b2.x1) > max(b1.width, b2.width) * 0.45:
+        allowed, gap, line_height = self._geometry_allows_merge(b1, b2, line_gap)
+        if not allowed:
             return False
 
         prev_text = current.lines[-1].text.strip() if current.lines else ""
         next_text = candidate.lines[0].text.strip() if candidate.lines else ""
-
-        if not prev_text or not next_text:
+        if (
+            not prev_text
+            or not next_text
+            or bool(_LIST_MARKER_REGEX.match(next_text))
+            or prev_text.endswith(":")
+        ):
             return False
-
-        if bool(_LIST_MARKER_REGEX.match(next_text)):
+        if self._is_shouted(prev_text) or self._is_shouted(next_text):
             return False
-
-        if prev_text.endswith(":"):
-            return False
-
-        if self._is_shouted(prev_text) != self._is_shouted(next_text):
-            return False
-        if self._is_shouted(prev_text) and self._is_shouted(next_text):
-            return False
-
         if prev_text.endswith("-") and not prev_text.endswith(" -"):
             return True
 
         col_width = max(current.bbox.width, candidate.bbox.width)
         ends_short = col_width > 0 and b1.width < 0.65 * col_width
         if prev_text.endswith((".", "!", "?", "...", "…”", '."')):
-            if ends_short:
-                return False
-            if gap > 1.2 * line_height:
-                return False
-        elif (
+            return not (ends_short or gap > 1.2 * line_height)
+        if (
             ends_short
             and self._starts_capitalised(next_text)
             and not prev_text.endswith(",")
         ):
-            # A line that stops well short of the column and is followed by a
-            # capitalised one ends its paragraph ("Kính gửi: Phòng Kế toán").
             return False
-
         return True
 
     @staticmethod

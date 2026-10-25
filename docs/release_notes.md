@@ -1,6 +1,41 @@
 # Ghi Chú Phát Hành
 
+## v0.3.0 — Đồng Bộ Trực Tiếp Cài Đặt 6 Danh Mục, Mở Khóa PDF Bảo Mật, Lưu Phiên OCR, Dấu Thanh Tiếng Việt, Xuất Hàng Loạt & Benchmark Định Lượng
+
+### Điểm nổi bật
+
+**1. Kết nối trực tiếp toàn bộ 18 tùy chọn trong 6 danh mục Cài đặt (`Preferences` Live Wiring)**
+- Mọi thay đổi trong `SettingsDialog` (`Ctrl+,`) được áp dụng tức thì qua tín hiệu `preferences_applied` tới `MainWindow`, `SettingsDock`, `NavigationDock`, `DocumentSession`, `ComparisonDock`, `BatchManager` và `PDFExporter`.
+- Đồng bộ tự động mô hình OCR mặc định, DPI, các bước tiền xử lý, chế độ màu trang đọc (`normal` / `sepia` / `night`), thu phóng mặc định (`fit_page` / `fit_width` / `actual_size`), kích thước bộ nhớ đệm trang (`cache_size_pages`), số luồng xử lý song song (`max_worker_threads`), tự động chạy OCR khi mở PDF scan (`auto_ocr_on_open`), xác nhận xóa trang PDF (`confirm_page_delete`), và mức nén PDF xuất ra (`fast` / `balanced` / `max`).
+
+**2. Mở khóa PDF bảo mật AES-256 & Lưu phiên nhận diện tự động (`OCRSessionStore`)**
+- `DocumentLoader` hỗ trợ mở khóa tệp PDF được mã hóa mật khẩu (`PasswordRequiredError` + hộp thoại nhập mật khẩu trên giao diện).
+- Tự động lưu và khôi phục kết quả `OCRPage` đã nhận diện/chỉnh sửa trong SQLite (`SettingsStore`) theo dấu vân tay của tệp gốc (`path`, `size`, `mtime_ns`), giúp đóng mở lại tài liệu hàng trăm trang không cần chạy lại OCR.
+
+**3. Tùy chọn kiểu dấu thanh tiếng Việt (`tone_style`), Từ điển cá nhân & Ngưỡng tin cậy động**
+- Hỗ trợ 3 kiểu đặt dấu thanh tiếng Việt trên `oa, oe, uy`: **Kiểu mới** (`hoà, thuý, khoẻ`), **Truyền thống — Nghị định 30** (`hòa, thúy, khỏe`, tự động giữ nguyên `quý, hoàng, toàn`), và **Giữ nguyên**.
+- `VietnameseSpellCorrector` nạp từ điển cá nhân (`custom_dictionary`) hỗ trợ cả danh sách từ bảo vệ chuyên ngành và quy tắc thay thế nhanh `sai => đúng` / `sai -> đúng`.
+- `ComparisonDock` cập nhật tức thì danh sách từ nghi ngờ tô vàng khi người dùng thay đổi `confidence_threshold`.
+
+**4. Bộ nhớ đệm Thumbnail, Menu ngữ cảnh vùng chọn & Xuất hàng loạt (`Batch Export`)**
+- Lưu đệm `QIcon` thumbnail theo trang, góc xoay và chế độ màu kèm tải lười khi cuộn cho tài liệu lớn.
+- Menu chuột phải trực tiếp trên vùng chọn của `DocumentCanvas`: nhận dạng lại vùng chọn, sao chép ảnh vùng chọn vào bộ nhớ tạm, tô sáng (Highlight), che mật (Redact) hoặc mở Bộ công cụ PDF.
+- Nút **`Xuất tất cả…`** trong `BatchDialog` cho phép xuất toàn bộ các tài liệu đã nhận diện trong hàng loạt ra thư mục đích chỉ với 1 cú nhấp chuột.
+
+**5. Bộ đo kiểm chất lượng OCR định lượng (`src/services/benchmark_service.py`)**
+- Cung cấp hàm tính `CER` (Character Error Rate), `CAR` (Character Accuracy Rate), `WER` (Word Error Rate) chuẩn hóa Unicode NFC và xuất báo cáo Markdown/JSON nghiệm thu `SC-3` và `SC-4`.
+
+**6. Nâng cấp tách dòng/đoạn tiếng Việt, khử bóng đổ khi Deskew, giao diện & thư mục Weights**
+- `segment_lines`: gộp dải dấu tiếng Việt bị tách rời về đúng dòng chữ và tách các dòng sát nhau do khoảng cách dòng hẹp.
+- `LayoutAnalyzer`: đánh giá ngắt đoạn theo nhịp dòng trên trang, giữ riêng các dòng in hoa toàn bộ, ghép các hộp từ cùng hàng và tăng độ chính xác tách cột.
+- `Preprocessor` & `TrOCR`: làm phẳng ánh sáng không đều trước khi nhị phân hóa để tránh xoay nhầm 90° trên trang có bóng đổ; lặp biên (`BORDER_REPLICATE`) khi làm thẳng ảnh; cắt dòng dài tại khoảng trắng từ cho TrOCR.
+- `VietnameseSpellCorrector`: tự động khôi phục chữ hoa đầu câu sau dấu chấm và viết hoa họ người Việt phổ biến (`Nguyễn`, `Trần`, `Phạm`...).
+- Giao diện & thư mục `weights`: vẽ biểu tượng SVG thanh công cụ theo đúng màu chủ đề hiện hành; cố định chiều rộng `QComboBox` trong `SettingsDock`; giữ nguyên thư mục weights tùy chỉnh khi khởi động và cập nhật trực tiếp bộ nhớ đệm `HuggingFace` / `PaddleX` ngay trong phiên chạy.
+
+---
+
 ## v0.2.0 — Nâng cấp Trình đọc PDF Chuyên nghiệp, 7 Mô hình OCR Đa Biến Thể, Sửa Chính Tả Tiếng Việt N-gram & HiDPI
+
 
 ### Điểm nổi bật
 

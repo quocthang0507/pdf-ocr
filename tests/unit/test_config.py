@@ -163,3 +163,16 @@ def test_export_and_import_profile_round_trip(tmp_path: Path) -> None:
     assert exported == profile_path.resolve()
     assert imported == custom
     assert manager.load() == custom
+
+
+def test_preferences_tone_style_round_trip_and_validation(tmp_path: Path) -> None:
+    manager = ConfigManager(tmp_path / "tone_cfg", use_qsettings=False)
+    prefs = Preferences(tone_style="traditional", custom_dictionary="cty => công ty")
+    manager.save(prefs)
+
+    restored = manager.load()
+    assert restored.tone_style == "traditional"
+    assert restored.custom_dictionary == "cty => công ty"
+
+    with pytest.raises(ValueError, match="dấu thanh"):
+        Preferences(tone_style="invalid_style")

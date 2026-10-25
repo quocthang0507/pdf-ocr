@@ -308,3 +308,31 @@ def test_highlight_search_query_selects_and_counts_matches(
     count = dock.highlight_search_query("hóa")
     assert count == 1
     assert dock.editor.textCursor().selectedText().lower() == "hóa"
+
+
+def test_dynamic_confidence_threshold_updates_uncertain_spans(
+    dock: ComparisonDock,
+) -> None:
+    _load(dock)
+    assert dock.uncertain_count() == 1
+
+    # Raising threshold to 0.96 flags "hàhg" (0.41) AND "Tổng" (0.95)
+    dock.set_confidence_threshold(0.96)
+    assert dock.uncertain_count() == 2
+
+    # Lowering threshold to 0.40 flags none
+    dock.set_confidence_threshold(0.40)
+    assert dock.uncertain_count() == 0
+
+
+def test_spell_options_apply_custom_dictionary_and_tone_style(
+    dock: ComparisonDock,
+) -> None:
+    dock.set_spell_options(
+        custom_dictionary="cty => công ty",
+        tone_style="traditional",
+    )
+    dock.set_image(_image(400, 400), text="cty hoà bình")
+    dock.apply_spell_correction()
+
+    assert dock.transcript() == "công ty hòa bình"

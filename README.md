@@ -19,14 +19,16 @@
 | **PDF có sẵn text** | Đọc thẳng lớp text dưới 1 giây/trang; có tùy chọn **Ép buộc OCR** (`force_ocr`) khi lớp chữ gốc bị lỗi bảng mã |
 | **Xem PDF chuyên nghiệp** | Khung điều hướng trái (**Thông tin tệp & Thanh tiến trình OCR**, **Ảnh thu nhỏ trang (Thumbnails)** kèm menu ngữ cảnh chuột phải, **Mục lục** PDF, **Tìm kiếm** toàn văn tức thì), **3 chế độ màu đọc trang** (**Bình thường**, **Giấy vàng Sepia**, **Ban đêm**), Toàn màn hình (`F11`), hộp thoại **Thuộc tính tài liệu PDF** (`Ctrl+D`: phiên bản PDF, kích thước, bảo mật, siêu dữ liệu & phông chữ nhúng) |
 | **Chỉnh sửa & Bảo mật PDF (`Ctrl+E`)** | **Quản lý trang** (xoay vĩnh viễn lưu vào PDF, xóa trang, trích xuất dải trang, ghép nối nhiều PDF, đảo thứ tự trang), **Chú thích & Bảo mật vùng** (Tô sáng `Highlight`, gắn ghi chú `Sticky Note`, chèn ảnh chữ ký/con dấu, che mật vĩnh viễn `Redaction`), chỉnh sửa **Metadata & Bookmarks**, khóa mật khẩu **AES-256** và nén dung lượng PDF |
-| **Cài đặt 6 danh mục (`Ctrl+,`)** | Cấu hình toàn diện theo phong cách Adobe Reader / ABBYY FineReader (**Chung và Giao diện**, **Xem PDF**, **OCR và Tiền xử lý**, **Từ điển và Chính tả**, **Xuất tệp và PDF**, **Hiệu năng và AI**) kèm **Xuất/Nhập hồ sơ cấu hình (`.json`)** |
+| **Cài đặt 6 danh mục (`Ctrl+,`)** | Cấu hình toàn diện theo phong cách Adobe Reader / ABBYY FineReader (**Chung và Giao diện**, **Xem PDF**, **OCR và Tiền xử lý**, **Từ điển và Chính tả**, **Xuất tệp và PDF**, **Hiệu năng và AI**) đồng bộ trực tiếp toàn ứng dụng kèm **Xuất/Nhập hồ sơ cấu hình (`.json`)** |
+| **Mở khóa & Lưu phiên OCR** | Hỗ trợ mở tệp PDF khóa mật khẩu **AES-256** và tự động lưu/khôi phục kết quả OCR đã nhận diện theo dấu vân tay tệp trong SQLite |
 | **Tiền xử lý** | Tự xoay đúng hướng, làm thẳng ảnh nghiêng, cắt viền, khử bóng và tăng tương phản |
 | **Bố cục** | Phân tích chiếu ngang/dọc (XY-Cut Projection Profile) & thứ tự đọc tự nhiên cho tài liệu nhiều cột; tách bảng biểu kèm ô gộp |
-| **Hậu xử lý & Sửa chính tả** | Chuẩn hóa Unicode NFC, sửa nhầm lẫn ký tự, chuẩn hóa dấu thanh, và **Sửa lỗi chính tả & dấu tiếng Việt theo ngữ cảnh N-gram** (`VietnameseSpellCorrector` + `SymSpell` tùy chọn, bảo vệ số/email/SĐT/tên riêng) |
-| **Soát lỗi** | So sánh ảnh–văn bản đồng bộ hai chiều, tô vàng từ tin cậy thấp, nút điều hướng nhanh **◀ Từ nghi ngờ / Từ nghi ngờ ▶**, nút **Sửa chính tả** 1 chạm, Undo/Redo, Tìm & Thay thế |
-| **Chọn vùng** | Vẽ hình chữ nhật (`Ctrl+R`) để chỉ nhận diện một phần trang |
+| **Hậu xử lý & Sửa chính tả** | Chuẩn hóa Unicode NFC, tùy chọn 3 kiểu dấu thanh (`modern`, `traditional` Nghị định 30, `preserve`), từ điển cá nhân (`sai => đúng` & từ bảo vệ), và **Sửa lỗi chính tả tiếng Việt N-gram** (`VietnameseSpellCorrector` + `SymSpell` tùy chọn) |
+| **Soát lỗi** | So sánh ảnh–văn bản đồng bộ hai chiều, tô vàng từ tin cậy thấp theo ngưỡng động, nút điều hướng nhanh **◀ Từ nghi ngờ / Từ nghi ngờ ▶**, nút **Sửa chính tả** 1 chạm, Undo/Redo, Tìm & Thay thế |
+| **Chọn vùng** | Vẽ hình chữ nhật (`Ctrl+R`) kèm menu chuột phải (OCR vùng chọn, Sao chép ảnh vùng chọn, Tô sáng PDF, Che mật PDF) |
 | **Bảng biểu** | Trình sửa bảng dạng lưới trước khi xuất Excel |
-| **Xử lý nền** | QThreadPool; tạm dừng, tiếp tục, hủy; phần trăm và thời gian còn lại; thu hồi RAM/VRAM sau mỗi trang |
+| **Xử lý nền & Hàng loạt** | QThreadPool; tạm dừng, tiếp tục, hủy; phần trăm và thời gian còn lại; thu hồi RAM/VRAM sau mỗi trang; **Xuất hàng loạt (`Xuất tất cả…`)** 1 chạm |
+
 | **Xuất** | PDF tìm kiếm được, DOCX, XLSX, Markdown, TXT, JSON — ghi nguyên tử |
 | **Giao diện & HiDPI** | Chủ đề Sáng/Tối/Theo hệ thống, tương thích màn hình **HiDPI** (125%, 150%, 200% với icon đa độ phân giải `@2x` và bố cục co giãn), thông báo toast, tiếng Việt và tiếng Anh |
 | **Lưu trữ** | Cơ sở dữ liệu SQLite riêng trong thư mục ứng dụng; thư mục weights tùy chỉnh được |
@@ -77,12 +79,13 @@ Chạy riêng từng nhóm: `pytest -m unit`, `pytest -m integration`, `pytest -
 
 | Cổng | Ngưỡng | Hiện tại |
 | :-- | :-- | :-- |
-| Kiểm thử | Tất cả xanh | 660+ |
-| Độ phủ | ≥ 80% | ~90% |
+| Kiểm thử | Tất cả xanh | 692 |
+| Độ phủ | ≥ 80% | ~84% |
 | `ruff` / `black` / `isort` | 0 lỗi | 0 |
-| `mypy --strict` | 0 lỗi | 0 (78 tệp) |
+| `mypy --strict` | 0 lỗi | 0 (79 tệp) |
 | `bandit` | 0 cảnh báo | 0 |
 | Kích thước hàm / tệp | ≤ 50 / ≤ 800 dòng | ≤ 50 / ≤ 800 |
+
 
 Bộ tài liệu mẫu nằm ở `tests/fixtures/` và có thể dựng lại bằng
 `python tests/fixtures/generate_fixtures.py`. Kiểm thử end-to-end chạy hoàn toàn ngoại tuyến:
@@ -106,7 +109,8 @@ tìm thư mục `models/` ngay cạnh tệp chạy, sau đó mới đến `src/m
 Dự án đi kèm 2 workflow trong `.github/workflows/`:
 
 - **[`.github/workflows/ci.yml`](.github/workflows/ci.yml):** Tự động chạy trên mỗi lần `push` và `pull_request` — kiểm tra cổng chất lượng tĩnh (`ruff`, `black`, `isort`, `mypy --strict`, `bandit`) và chạy toàn bộ bộ kiểm thử (`unit`, `integration`, `gui` ở chế độ headless `QT_QPA_PLATFORM=offscreen`) trên **Ubuntu, Windows và macOS**.
-- **[`.github/workflows/release.yml`](.github/workflows/release.yml):** Kích hoạt khi đẩy tag dạng `v*.*.*` (ví dụ `git tag v0.2.0 && git push origin v0.2.0`) hoặc bấm **Run workflow** trên GitHub — tự động đóng gói bản Portable cho **Windows (`windows-x64`), Linux (`linux-x64`), macOS (`macos`)**, sinh mã băm `.sha256` và đăng tải lên **GitHub Releases** kèm ghi chú phát hành từ `docs/release_notes.md`.
+- **[`.github/workflows/release.yml`](.github/workflows/release.yml):** Kích hoạt khi đẩy tag dạng `v*.*.*` (ví dụ `git tag v0.3.0 && git push origin v0.3.0`) hoặc bấm **Run workflow** trên GitHub — tự động đóng gói bản Portable cho **Windows (`windows-x64`), Linux (`linux-x64`), macOS (`macos`)**, sinh mã băm `.sha256` và đăng tải lên **GitHub Releases** kèm ghi chú phát hành từ `docs/release_notes.md`.
+
 
 ---
 

@@ -41,6 +41,31 @@ def test_standardizes_old_vietnamese_tone_positions() -> None:
 
 
 @pytest.mark.unit
+def test_tone_style_traditional_and_preserve() -> None:
+    trad = Postprocessor(tone_style="traditional")
+    assert (
+        trad.correct_text("hoà, hoá, khoẻ, thuý; HOÀ, quý, hoàng")
+        == "hòa, hóa, khỏe, thúy; HÒA, quý, hoàng"
+    )
+
+    preserve = Postprocessor(tone_style="preserve")
+    assert preserve.correct_text("hòa, hoà, thúy, thuý") == "hòa, hoà, thúy, thuý"
+
+
+@pytest.mark.unit
+def test_custom_dictionary_protects_terms_and_applies_custom_rules() -> None:
+    from src.core.spell_corrector import VietnameseSpellCorrector
+
+    corrector = VietnameseSpellCorrector(
+        custom_dictionary="gổm, cty => công ty, hdnd -> Hội đồng nhân dân"
+    )
+    text = "Cty và hdnd có gổm 20 nhan vien"
+    fixed = corrector.fix_spelling(text)
+
+    assert fixed == "Công ty và Hội đồng nhân dân có gổm 20 nhân viên"
+
+
+@pytest.mark.unit
 def test_corrects_character_confusions_only_with_supporting_context() -> None:
     corrected = Postprocessor().correct_text("h0c 1ỗi tàI 2O24 1O1 VIỆT OASIS")
 

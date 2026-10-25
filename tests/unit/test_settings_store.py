@@ -191,3 +191,31 @@ def test_an_unusable_database_still_leaves_json_preferences_working(
     manager.save(Preferences(device="cpu"))
 
     assert manager.load().device == "cpu"
+
+
+def test_settings_store_persists_and_restores_ocr_pages_by_file_fingerprint(
+    store: SettingsStore, tmp_path: Path
+) -> None:
+    from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRWord
+
+    doc_file = tmp_path / "hop-dong.pdf"
+    doc_file.write_bytes(b"%PDF-1.7 fake content")
+    box = BoundingBox(10, 10, 120, 40)
+    page = OCRPage(
+        page_number=1,
+        width=400,
+        height=600,
+        blocks=(
+            OCRBlock(
+                lines=(OCRLine(words=(OCRWord("Hợp đồng", box, 0.96),), bbox=box),),
+                bbox=box,
+            ),
+        ),
+    )
+
+    store.save_ocr_pages(doc_file, [page])
+    loaded = store.load_ocr_pages(doc_file)
+    assert loaded == {1: page}
+
+    store.clear_ocr_pages(doc_file)
+    assert store.load_ocr_pages(doc_file) == {}

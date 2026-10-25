@@ -5,6 +5,7 @@ from __future__ import annotations
 from collections import OrderedDict
 from collections.abc import Callable
 from pathlib import Path
+from typing import TYPE_CHECKING
 
 import cv2
 import numpy as np
@@ -14,6 +15,10 @@ from src.core.exceptions import DocumentLoadError, PDFOCRError
 from src.core.models import OCRDocument, OCRPage
 from src.core.pdf_editor import apply_page_color_mode
 from src.core.transcript import render_transcript
+from src.utils.logger import logger
+
+if TYPE_CHECKING:
+    from src.services.settings_store import SettingsStore
 
 IMAGE_CACHE_SIZE = 2
 
@@ -29,23 +34,52 @@ class DocumentSession:
     """
 
     def __init__(
-        self, path: str | Path, *, loader_factory: LoaderFactory = DocumentLoader
+        self,
+        path: str | Path,
+        *,
+        loader_factory: LoaderFactory = DocumentLoader,
+        cache_size: int = IMAGE_CACHE_SIZE,
+        color_mode: str = "normal",
+        password: str | None = None,
+        session_store: SettingsStore | None = None,
     ) -> None:
         self.path = Path(path)
         self._loader_factory = loader_factory
         self._loader: DocumentLoader | None = None
+        self._password = password
+        self._session_store = session_store
         self._pages: OrderedDict[tuple[int, int], LoadedPage] = OrderedDict()
-        self._results: dict[int, OCRPage] = {}
+        self._results: dict[int, OCRPage] = (
+            session_store.load_ocr_pages(self.path) if session_store is not None else {}
+        )
         self._rotations: dict[int, int] = {}
+        self._cache_size = max(1, min(32, int(cache_size)))
         self._color_mode = "normal"
+        self.set_page_color_mode(color_mode)
         self._current = 1
 
     # -- document ---------------------------------------------------------
 
+    @property
+    def cache_size(self) -> int:
+        return self._cache_size
+
+    def set_cache_size(self, max_pages: int) -> None:
+        """Update the rendered-page LRU limit and evict older pages if needed."""
+        self._cache_size = max(1, min(32, int(max_pages)))
+        while len(self._pages) > self._cache_size:
+            self._pages.popitem(last=False)
+
     def _open(self) -> DocumentLoader:
         if self._loader is None:
             try:
-                self._loader = self._loader_factory(self.path)
+                if (
+                    self._password is not None
+                    and self._loader_factory is DocumentLoader
+                ):
+                    self._loader = DocumentLoader(self.path, password=self._password)
+                else:
+                    self._loader = self._loader_factory(self.path)
             except PDFOCRError:
                 raise
             except Exception as error:
@@ -182,7 +216,7 @@ class DocumentSession:
         except Exception as error:
             raise DocumentLoadError("Không thể hiển thị trang tài liệu.") from error
         self._pages[key] = loaded
-        while len(self._pages) > IMAGE_CACHE_SIZE:
+        while len(self._pages) > self._cache_size:
             self._pages.popitem(last=False)
         return loaded
 
@@ -221,6 +255,23 @@ class DocumentSession:
 
     def store(self, page: OCRPage) -> None:
         self._results[page.page_number] = page
+        if self._session_store is not None:
+            try:
+                self._session_store.save_ocr_pages(
+                    self.path,
+                    tuple(self._results[num] for num in self.recognised_pages()),
+                )
+            except Exception as err:
+                logger.debug("Không lưu được kết quả phiên OCR: {}", err)
+
+    def clear_results(self) -> None:
+        """Clear in-memory and cached OCR results for this document."""
+        self._results.clear()
+        if self._session_store is not None:
+            try:
+                self._session_store.clear_ocr_pages(self.path)
+            except Exception as err:
+                logger.debug("Không xóa được kết quả phiên OCR: {}", err)
 
     def result(self, page_number: int) -> OCRPage | None:
         return self._results.get(page_number)
