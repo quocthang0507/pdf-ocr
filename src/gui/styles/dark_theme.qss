@@ -694,3 +694,101 @@ QPlainTextEdit#region_result {
     border-radius: 7px;
     padding: 6px 8px;
 }
+
+
+/* Navigation dock, transcript header & settings scroll */
+QFrame#file_info_card,
+QFrame#structure_panel {
+    background-color: #161d26;
+    border: 1px solid #2c3644;
+    border-radius: 8px;
+}
+
+QLabel#file_name_label,
+QLabel#transcript_title_label {
+    background-color: transparent;
+    color: #e6ebf2;
+    font-size: 13px;
+    font-weight: 600;
+}
+
+QLabel#file_meta_label,
+QLabel#ocr_progress_label,
+QLabel#doc_search_summary,
+QLabel#word_count_label,
+QLabel#structure_summary {
+    background-color: transparent;
+    color: #9aa6b8;
+    font-size: 12px;
+}
+
+QProgressBar#ocr_progress_bar {
+    background-color: #232c38;
+    border: none;
+    border-radius: 4px;
+    height: 8px;
+    max-height: 8px;
+    min-height: 8px;
+}
+
+QPushButton#ocr_current_page_button {
+    background-color: #2563eb;
+    border-color: #2563eb;
+    color: #ffffff;
+    font-weight: 600;
+}
+
+QPushButton#ocr_current_page_button:hover {
+    background-color: #3b76ef;
+}
+
+QPushButton#ocr_current_page_button:disabled {
+    background-color: #1e2633;
+    border-color: #2b3545;
+    color: #6b778a;
+}
+
+QFrame#transcript_bar {
+    background-color: #161d27;
+    border: 1px solid #2c3644;
+    border-radius: 8px;
+}
+
+QPushButton#find_replace_button,
+QPushButton#copy_transcript_button {
+    min-height: 20px;
+    padding: 4px 10px;
+}
+
+QTabWidget#navigation_tabs::pane {
+    background-color: transparent;
+    border: none;
+    padding-top: 6px;
+}
+
+QTabBar::tab {
+    background-color: #1a212b;
+    border: 1px solid #2c3644;
+    border-radius: 6px;
+    color: #9aa6b8;
+    margin-right: 4px;
+    padding: 5px 10px;
+}
+
+QTabBar::tab:hover {
+    background-color: #232c38;
+    color: #e6ebf2;
+}
+
+QTabBar::tab:selected {
+    background-color: #1e3a5f;
+    border-color: #3b82f6;
+    color: #e6ebf2;
+    font-weight: 600;
+}
+
+QScrollArea#settings_scroll_area,
+QWidget#settings_scroll_content {
+    background-color: transparent;
+    border: none;
+}

@@ -246,3 +246,16 @@ def test_clearing_removes_every_page_item(canvas: DocumentCanvas) -> None:
 def test_setting_blocks_without_a_page_is_rejected(canvas: DocumentCanvas) -> None:
     with pytest.raises(ValueError, match="trang tài liệu"):
         canvas.set_blocks(_page().blocks)
+
+
+def test_canvas_reports_has_page_and_renders_empty_state_without_error(
+    canvas: DocumentCanvas,
+) -> None:
+    assert canvas.has_page() is False
+    canvas.viewport().repaint()
+
+    canvas.set_image(_image(300, 400))
+    assert canvas.has_page() is True
+
+    canvas.clear_page()
+    assert canvas.has_page() is False

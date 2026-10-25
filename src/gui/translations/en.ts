@@ -167,5 +167,57 @@
         <source>Trợ &amp;giúp</source>
         <translation>&amp;Help</translation>
     </message>
+    <message>
+        <source>Thuộc tính &amp;tài liệu…</source>
+        <translation>Document &amp;properties…</translation>
+    </message>
+    <message>
+        <source>Xem thông tin phiên bản PDF, kích thước, siêu dữ liệu và phông chữ nhúng.</source>
+        <translation>View PDF version, page dimensions, metadata, and embedded fonts.</translation>
+    </message>
+    <message>
+        <source>Chế độ đọc: &amp;Bình thường</source>
+        <translation>Reading mode: &amp;Normal</translation>
+    </message>
+    <message>
+        <source>Hiển thị trang tài liệu với màu sắc gốc.</source>
+        <translation>Display document pages in their original colours.</translation>
+    </message>
+    <message>
+        <source>Chế độ đọc: &amp;Giấy vàng (Sepia)</source>
+        <translation>Reading mode: &amp;Sepia</translation>
+    </message>
+    <message>
+        <source>Hiển thị trang tài liệu màu giấy vàng dịu mắt.</source>
+        <translation>Display document pages with a warm sepia paper tint.</translation>
+    </message>
+    <message>
+        <source>Chế độ đọc: &amp;Ban đêm</source>
+        <translation>Reading mode: &amp;Night</translation>
+    </message>
+    <message>
+        <source>Đảo màu trang thông minh cho môi trường thiếu sáng.</source>
+        <translation>Invert page luminance for comfortable dark reading.</translation>
+    </message>
+    <message>
+        <source>Toàn &amp;màn hình</source>
+        <translation>&amp;Full screen</translation>
+    </message>
+    <message>
+        <source>Bật/tắt chế độ xem toàn màn hình.</source>
+        <translation>Toggle full-screen viewing mode.</translation>
+    </message>
+    <message>
+        <source>Bộ công cụ chỉnh sửa &amp;PDF…</source>
+        <translation>&amp;PDF Editing Tools…</translation>
+    </message>
+    <message>
+        <source>Quản lý trang, tô sáng, gắn ghi chú, chữ ký, che mật và nén PDF.</source>
+        <translation>Manage pages, highlights, notes, stamps, redaction, and PDF compression.</translation>
+    </message>
+    <message>
+        <source>Cấu hình toàn diện ứng dụng.</source>
+        <translation>Configure all application settings.</translation>
+    </message>
 </context>
 </TS>

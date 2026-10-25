@@ -113,3 +113,53 @@ def test_cleanup_failure_does_not_mask_safe_storage_error(
     with pytest.raises(ConfigError) as caught:
         ConfigManager(tmp_path, use_qsettings=False).save(Preferences())
     assert "sensitive/path" not in str(caught.value)
+
+
+def test_extended_preferences_round_trip_across_sqlite_and_json(
+    tmp_path: Path,
+) -> None:
+    prefs = Preferences(
+        theme="dark",
+        restore_session=False,
+        confirm_page_delete=False,
+        default_zoom_mode="fit_width",
+        page_color_mode="sepia",
+        show_thumbnails=False,
+        cache_size_pages=8,
+        default_engine="paddle",
+        default_dpi=400,
+        auto_ocr_on_open=True,
+        default_deskew=False,
+        default_denoise=True,
+        default_binarize=False,
+        auto_spell_correction=False,
+        confidence_threshold=0.75,
+        custom_dictionary="UBND, HĐND",
+        default_export_format="pdf",
+        pdf_compression_level="max",
+        max_worker_threads=8,
+    )
+    manager = ConfigManager(tmp_path, use_qsettings=False)
+    manager.save(prefs)
+
+    loaded = ConfigManager(tmp_path, use_qsettings=False).load()
+    assert loaded == prefs
+
+
+def test_export_and_import_profile_round_trip(tmp_path: Path) -> None:
+    manager = ConfigManager(tmp_path / "cfg", use_qsettings=False)
+    custom = Preferences(
+        theme="dark",
+        page_color_mode="night",
+        default_dpi=350,
+        custom_dictionary="Việt Nam, Hà Nội",
+        pdf_compression_level="max",
+    )
+    profile_path = tmp_path / "my_profile.json"
+
+    exported = manager.export_profile(profile_path, custom)
+    imported = manager.import_profile(exported)
+
+    assert exported == profile_path.resolve()
+    assert imported == custom
+    assert manager.load() == custom

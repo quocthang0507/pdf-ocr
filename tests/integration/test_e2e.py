@@ -364,3 +364,108 @@ def test_the_whole_sample_set_runs_through_the_batch_queue(qapp) -> None:
     assert queued == len(documents) + 1, "PDF hai trang phải đóng góp hai tác vụ."
     assert snapshot.failed == 0
     assert snapshot.completed == queued
+
+
+def test_full_ui_pdf_reader_ocr_and_editor_workflow(qtbot, tmp_path: Path) -> None:
+    """End-to-end UI workflow: Open -> View -> Edit PDF -> OCR -> Search -> Settings."""
+    from PySide6.QtCore import QSettings
+
+    from src.config import ConfigManager
+    from src.gui.dialogs.document_properties_dialog import DocumentPropertiesDialog
+    from src.gui.dialogs.pdf_tools_dialog import PDFToolsDialog
+    from src.gui.dialogs.settings_dialog import SettingsDialog
+    from src.gui.main_window import MainWindow
+    from src.gui.window_helpers import reload_modified_pdf
+
+    # 1. Create a 2-page PDF and open it in MainWindow
+    pdf_path = tmp_path / "hop-dong-2026.pdf"
+    with pymupdf.open() as doc:
+        p1 = doc.new_page(width=400, height=600)
+        p1.insert_text((40, 80), "HOP DONG DICH VU CONG NGHE", fontsize=14)
+        p2 = doc.new_page(width=400, height=600)
+        p2.insert_text((40, 80), "Dieu 2: Thanh toan va bao mat", fontsize=12)
+        doc.save(str(pdf_path))
+
+    settings = QSettings(str(tmp_path / "session.ini"), QSettings.Format.IniFormat)
+    window = MainWindow(settings=settings)
+    qtbot.addWidget(window)
+    window.open_path(pdf_path)
+    assert window.document_session is not None
+    assert window.document_session.page_count == 2
+    assert not window.navigation_dock.page_list.item(0).icon().isNull()
+
+    # 2. Switch reading color modes smoothly
+    window.command_actions["color_mode_sepia"].trigger()
+    assert window.document_session.page_color_mode == "sepia"
+    window.command_actions["color_mode_night"].trigger()
+    assert window.document_session.page_color_mode == "night"
+    window.command_actions["color_mode_normal"].trigger()
+    assert window.document_session.page_color_mode == "normal"
+
+    # 3. Edit PDF via PDFToolsDialog (Metadata, Bookmarks, Highlight, Note, Compress)
+    window.document_session.close()
+    tools = PDFToolsDialog(pdf_path, current_page=1, parent=window)
+    qtbot.addWidget(tools)
+    tools.pdf_modified.connect(lambda _p: reload_modified_pdf(window))
+    tools.title_edit.setText("Hợp đồng dịch vụ 2026")
+    tools.author_edit.setText("Công ty AI Việt Nam")
+    tools.save_metadata_btn.click()
+    tools.bookmarks_edit.setPlainText(
+        "1 | Điều 1: Tổng quan | 1\n1 | Điều 2: Thanh toán | 2"
+    )
+    tools.save_bookmarks_btn.click()
+    tools.highlight_btn.click()
+    tools.note_text_edit.setText("Đã kiểm duyệt")
+    tools.add_note_btn.click()
+    tools.compress_btn.click()
+
+    # Verify properties & outline reloaded in MainWindow
+    props_dlg = DocumentPropertiesDialog(pdf_path, parent=window)
+    qtbot.addWidget(props_dlg)
+    assert props_dlg._props.metadata["title"] == "Hợp đồng dịch vụ 2026"
+    assert props_dlg._props.bookmarks_count == 2
+    assert window.navigation_dock.outline_tree.topLevelItemCount() == 2
+
+    # 4. Store OCR result, run spell correction & search navigation
+    box = BoundingBox(20, 20, 300, 60)
+    ocr_page = OCRPage(
+        page_number=2,
+        width=400,
+        height=600,
+        blocks=(
+            OCRBlock(
+                lines=(
+                    OCRLine(
+                        words=(
+                            OCRWord("Điều", box, 0.99),
+                            OCRWord("khoản", box, 0.99),
+                            OCRWord("thanh", box, 0.99),
+                            OCRWord("toán", box, 0.99),
+                        ),
+                        bbox=box,
+                    ),
+                ),
+                bbox=box,
+            ),
+        ),
+    )
+    window.document_session.store(ocr_page)
+    window.navigation_dock.refresh_status()
+    window.navigation_dock.search_input.setText("thanh toán")
+    assert window.navigation_dock.search_results.count() == 1
+    item = window.navigation_dock.search_results.item(0)
+    assert item is not None
+    window.navigation_dock._on_search_item_clicked(item)
+    assert window.document_session.current_page == 2
+
+    # 5. Configure 6-category Settings & export/import profile
+    cfg = ConfigManager(tmp_path / "cfg", use_qsettings=False)
+    settings_dlg = SettingsDialog(config=cfg, parent=window)
+    qtbot.addWidget(settings_dlg)
+    settings_dlg.color_mode_combo.setCurrentIndex(
+        settings_dlg.color_mode_combo.findData("sepia")
+    )
+    settings_dlg.default_dpi_spin.setValue(400)
+    settings_dlg.accept()
+    assert cfg.load().page_color_mode == "sepia"
+    assert cfg.load().default_dpi == 400

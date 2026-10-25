@@ -282,6 +282,88 @@ def test_a_failed_move_is_reported_without_technical_detail(
     assert "Traceback" not in blocker.args[0]
 
 
+def test_dialog_exposes_six_comprehensive_configuration_categories(
+    dialog: SettingsDialog,
+) -> None:
+    assert dialog.category_tabs.count() == 6
+    titles = [
+        dialog.category_tabs.tabText(i) for i in range(dialog.category_tabs.count())
+    ]
+    assert titles == [
+        "Chung và Giao diện",
+        "Xem PDF",
+        "OCR và Tiền xử lý",
+        "Từ điển và Chính tả",
+        "Xuất tệp và PDF",
+        "Hiệu năng và AI",
+    ]
+
+
+def test_dialog_persists_all_six_category_options(
+    dialog: SettingsDialog, config: ConfigManager
+) -> None:
+    dialog.restore_session_check.setChecked(False)
+    dialog.confirm_delete_check.setChecked(False)
+    dialog.zoom_mode_combo.setCurrentIndex(dialog.zoom_mode_combo.findData("fit_width"))
+    dialog.color_mode_combo.setCurrentIndex(dialog.color_mode_combo.findData("sepia"))
+    dialog.thumbnails_check.setChecked(False)
+    dialog.cache_pages_spin.setValue(6)
+    dialog.default_dpi_spin.setValue(400)
+    dialog.auto_ocr_check.setChecked(True)
+    dialog.deskew_check.setChecked(False)
+    dialog.spell_correction_check.setChecked(False)
+    dialog.confidence_spin.setValue(0.75)
+    dialog.custom_dict_edit.setPlainText("UBND, Bộ Tài chính")
+    dialog.export_format_combo.setCurrentIndex(
+        dialog.export_format_combo.findData("pdf")
+    )
+    dialog.compression_combo.setCurrentIndex(dialog.compression_combo.findData("max"))
+    dialog.worker_threads_spin.setValue(8)
+
+    dialog.accept()
+
+    saved = config.load()
+    assert saved.restore_session is False
+    assert saved.confirm_page_delete is False
+    assert saved.default_zoom_mode == "fit_width"
+    assert saved.page_color_mode == "sepia"
+    assert saved.show_thumbnails is False
+    assert saved.cache_size_pages == 6
+    assert saved.default_dpi == 400
+    assert saved.auto_ocr_on_open is True
+    assert saved.default_deskew is False
+    assert saved.auto_spell_correction is False
+    assert saved.confidence_threshold == pytest.approx(0.75)
+    assert saved.custom_dictionary == "UBND, Bộ Tài chính"
+    assert saved.default_export_format == "pdf"
+    assert saved.pdf_compression_level == "max"
+    assert saved.max_worker_threads == 8
+
+
+def test_dialog_exports_and_imports_profile_json(
+    dialog: SettingsDialog, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    profile_file = tmp_path / "profile.json"
+    dialog.color_mode_combo.setCurrentIndex(dialog.color_mode_combo.findData("night"))
+    dialog.default_dpi_spin.setValue(450)
+    monkeypatch.setattr(
+        QFileDialog, "getSaveFileName", lambda *a, **k: (str(profile_file), "JSON")
+    )
+    dialog.export_profile_to_file()
+    assert profile_file.is_file()
+
+    # Reset UI controls then import profile back
+    dialog.color_mode_combo.setCurrentIndex(dialog.color_mode_combo.findData("normal"))
+    dialog.default_dpi_spin.setValue(200)
+    monkeypatch.setattr(
+        QFileDialog, "getOpenFileName", lambda *a, **k: (str(profile_file), "JSON")
+    )
+    dialog.import_profile_from_file()
+
+    assert dialog.color_mode_combo.currentData() == "night"
+    assert dialog.default_dpi_spin.value() == 450
+
+
 # -- settings dock ----------------------------------------------------------
 
 

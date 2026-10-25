@@ -100,7 +100,9 @@ class DocumentHistoryDialog(QDialog):
         self.table.itemSelectionChanged.connect(self._update_button_states)
         layout.addWidget(self.table, 1)
 
-        # Action buttons
+        layout.addLayout(self._build_button_row())
+
+    def _build_button_row(self) -> QHBoxLayout:
         button_layout = QHBoxLayout()
         button_layout.setSpacing(8)
 
@@ -132,7 +134,7 @@ class DocumentHistoryDialog(QDialog):
 
         button_layout.addWidget(self.btn_open)
         button_layout.addWidget(self.btn_close)
-        layout.addLayout(button_layout)
+        return button_layout
 
         self._update_button_states()
 

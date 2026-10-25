@@ -6,10 +6,11 @@ import time
 from collections.abc import Sequence
 
 import numpy as np
-from PySide6.QtCore import QPointF, QRectF, QSizeF, Qt, Signal
+from PySide6.QtCore import QPointF, QRect, QRectF, QSizeF, Qt, Signal
 from PySide6.QtGui import (
     QBrush,
     QColor,
+    QFont,
     QKeyEvent,
     QMouseEvent,
     QPainter,
@@ -118,6 +119,10 @@ class DocumentCanvas(QGraphicsView):
 
     # -- page content -----------------------------------------------------
 
+    def has_page(self) -> bool:
+        """Return True when a document page image is currently loaded."""
+        return self._page_item is not None
+
     def set_image(self, image: np.ndarray) -> None:
         """Replace the displayed page; blocks from the previous page are dropped."""
         pixmap = QPixmap.fromImage(ndarray_to_qimage(image))
@@ -126,6 +131,7 @@ class DocumentCanvas(QGraphicsView):
         self._page_item.setZValue(0)
         self.scene().setSceneRect(QRectF(pixmap.rect()))
         self.reset_zoom()
+        self.viewport().update()
 
     def set_blocks(self, blocks: Sequence[OCRBlock]) -> None:
         """Draw layout boxes over the current page, colour coded by block type."""
@@ -157,6 +163,7 @@ class DocumentCanvas(QGraphicsView):
         self.scene().clear()
         self._page_item = None
         self.scene().setSceneRect(QRectF())
+        self.viewport().update()
 
     def block_items(self) -> list[BlockItem]:
         return list(self._block_items)
@@ -170,6 +177,55 @@ class DocumentCanvas(QGraphicsView):
         for item in self._block_items:
             self.scene().removeItem(item)
         self._block_items.clear()
+
+    def drawBackground(  # noqa: N802 - Qt override
+        self, painter: QPainter, rect: QRectF | QRect
+    ) -> None:
+        super().drawBackground(painter, rect)
+        if self._page_item is not None:
+            return
+        viewport_rect = QRectF(self.viewport().rect())
+        if viewport_rect.width() < 160 or viewport_rect.height() < 120:
+            return
+        painter.save()
+        painter.resetTransform()
+        card_w = min(420.0, viewport_rect.width() - 48.0)
+        card_h = min(190.0, viewport_rect.height() - 48.0)
+        card = QRectF(
+            (viewport_rect.width() - card_w) / 2.0,
+            (viewport_rect.height() - card_h) / 2.0,
+            card_w,
+            card_h,
+        )
+        border_pen = QPen(QColor(120, 140, 170, 110), 1.5, Qt.PenStyle.DashLine)
+        painter.setPen(border_pen)
+        painter.setBrush(QBrush(QColor(120, 140, 170, 18)))
+        painter.drawRoundedRect(card, 14.0, 14.0)
+
+        title_font = QFont(self.font())
+        title_font.setPointSize(max(11, title_font.pointSize() + 2))
+        title_font.setBold(True)
+        painter.setFont(title_font)
+        painter.setPen(QColor(148, 163, 184, 220))
+        title_rect = QRectF(card.left() + 16, card.top() + 28, card.width() - 32, 36)
+        painter.drawText(
+            title_rect,
+            int(Qt.AlignmentFlag.AlignCenter),
+            "Kéo & thả tệp PDF hoặc hình ảnh vào đây",
+        )
+
+        sub_font = QFont(self.font())
+        sub_font.setPointSize(max(9, sub_font.pointSize()))
+        painter.setFont(sub_font)
+        painter.setPen(QColor(148, 163, 184, 175))
+        sub_rect = QRectF(card.left() + 20, card.top() + 74, card.width() - 40, 84)
+        painter.drawText(
+            sub_rect,
+            int(Qt.AlignmentFlag.AlignCenter | Qt.TextFlag.TextWordWrap),
+            "Nhấn Ctrl+O để mở tệp · Ctrl+Shift+O để mở thư mục\n"
+            "Nhấn F5 để chạy OCR · Ctrl+R để chọn vùng nhận diện",
+        )
+        painter.restore()
 
     # -- selection --------------------------------------------------------
 

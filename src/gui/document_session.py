@@ -12,6 +12,7 @@ import numpy as np
 from src.core.document_loader import DocumentLoader, LoadedPage
 from src.core.exceptions import DocumentLoadError, PDFOCRError
 from src.core.models import OCRDocument, OCRPage
+from src.core.pdf_editor import apply_page_color_mode
 from src.core.transcript import render_transcript
 
 IMAGE_CACHE_SIZE = 2
@@ -36,6 +37,7 @@ class DocumentSession:
         self._pages: OrderedDict[tuple[int, int], LoadedPage] = OrderedDict()
         self._results: dict[int, OCRPage] = {}
         self._rotations: dict[int, int] = {}
+        self._color_mode = "normal"
         self._current = 1
 
     # -- document ---------------------------------------------------------
@@ -51,12 +53,25 @@ class DocumentSession:
         return self._loader
 
     @property
+    def is_pdf(self) -> bool:
+        return bool(self._open().is_pdf)
+
+    @property
     def page_count(self) -> int:
         return int(self._open().page_count)
 
     @property
     def current_page(self) -> int:
         return self._current
+
+    @property
+    def page_color_mode(self) -> str:
+        return self._color_mode
+
+    def set_page_color_mode(self, mode: str) -> None:
+        normalized = mode.strip().lower()
+        if normalized in ("normal", "sepia", "night"):
+            self._color_mode = normalized
 
     def file_size_bytes(self) -> int:
         try:
@@ -83,6 +98,19 @@ class DocumentSession:
         else:
             self._rotations[page_number] = angle
         return angle
+
+    def reload(self) -> None:
+        """Reload document from disk after an in-place PDF edit."""
+        self._pages.clear()
+        self._rotations.clear()
+        if self._loader is not None:
+            self._loader.close()
+            self._loader = None
+        total = self.page_count
+        self._results = {
+            num: page for num, page in self._results.items() if 1 <= num <= total
+        }
+        self._current = max(1, min(self._current, total))
 
     def outline(self) -> tuple[tuple[int, str, int], ...]:
         """Extract PDF bookmarks as (level, title, page_number) tuples."""
@@ -160,7 +188,18 @@ class DocumentSession:
 
     def image(self, page_number: int, *, dpi: int) -> np.ndarray:
         raw = self._loaded(page_number, dpi).image
-        return _rotate_image(raw, self.page_rotation(page_number))
+        rotated = _rotate_image(raw, self.page_rotation(page_number))
+        return apply_page_color_mode(rotated, self._color_mode)
+
+    def thumbnail(self, page_number: int, max_side: int = 72) -> np.ndarray:
+        """Render a small thumbnail image for the navigation page list."""
+        raw = self._loaded(page_number, 72).image
+        rotated = _rotate_image(raw, self.page_rotation(page_number))
+        h, w = rotated.shape[:2]
+        scale = min(1.0, float(max_side) / float(max(h, w, 1)))
+        new_w = max(1, round(w * scale))
+        new_h = max(1, round(h * scale))
+        return cv2.resize(rotated, (new_w, new_h), interpolation=cv2.INTER_AREA)
 
     def native_text(self, page_number: int, *, dpi: int) -> str:
         """The page's own text layer, so a text-based page reads before OCR."""

@@ -4,10 +4,9 @@ from __future__ import annotations
 
 from enum import Enum
 
-from PySide6.QtCore import QEvent, QObject, Qt, QTimer, Signal
+from PySide6.QtCore import QEvent, QObject, QTimer, Signal
 from PySide6.QtGui import QColor
 from PySide6.QtWidgets import (
-    QApplication,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -90,15 +89,7 @@ class Toast(QFrame):
         self.adjustSize()
 
     def _is_dark(self) -> bool:
-        if is_dark_theme():
-            return True
-        application = QApplication.instance()
-        if isinstance(application, QApplication):
-            scheme = application.styleHints().colorScheme()
-            if scheme == Qt.ColorScheme.Dark:
-                return True
-        bg = self.palette().color(self.backgroundRole())
-        return bg.lightness() < 128
+        return is_dark_theme()
 
     def _apply_style(self) -> None:
         """Paint the card itself so it matches the theme even before one loads."""
@@ -184,6 +175,10 @@ class NotificationCenter(QObject):
     def dismiss_all(self) -> None:
         for toast in list(self._toasts):
             toast.dismiss()
+
+    def refresh_theme(self) -> None:
+        for toast in self._toasts:
+            toast._apply_style()
 
     def reposition(self) -> None:
         """Stack the cards upward from the bottom-right corner of the host."""

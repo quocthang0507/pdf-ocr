@@ -914,3 +914,37 @@ def test_tables_recognised_in_a_region_are_saved_on_the_current_page(
     assert updated.tables == (table,)
     assert any(block.block_type.value == "table" for block in updated.blocks)
     assert "Paper | 2" in window.comparison.transcript()
+
+
+def test_selecting_search_result_in_navigation_dock_navigates_and_highlights_query(
+    qtbot, settings: QSettings, tmp_path: Path
+) -> None:
+    window = _recognised_window(qtbot, settings, tmp_path)
+
+    window.navigation_dock.search_input.setText("kết-quả-2")
+    assert window.navigation_dock.search_results.count() == 1
+    item = window.navigation_dock.search_results.item(0)
+    assert item is not None
+    window.navigation_dock.search_results.itemClicked.emit(item)
+
+    assert window.comparison.page_spin.value() == 2
+    assert window.comparison.editor.textCursor().selectedText() == "kết-quả-2"
+
+
+def test_window_supports_reading_color_modes_and_page_context_edits(
+    window: MainWindow, tmp_path: Path
+) -> None:
+    document = _pdf(tmp_path, pages=3)
+    window.open_path(document)
+    assert window.document_session is not None
+
+    window.command_actions["color_mode_sepia"].trigger()
+    assert window.document_session.page_color_mode == "sepia"
+    assert window.navigation_dock.reading_mode_combo.currentData() == "sepia"
+
+    window.command_actions["color_mode_night"].trigger()
+    assert window.document_session.page_color_mode == "night"
+
+    # Trigger delete_page via NavigationDock context action
+    window.navigation_dock.trigger_page_action("delete_page", 2)
+    assert window.document_session.page_count == 2

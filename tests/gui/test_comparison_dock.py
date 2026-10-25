@@ -262,3 +262,49 @@ def test_page_slider_navigation(dock: ComparisonDock, qtbot) -> None:
     with qtbot.waitSignal(dock.page_change_requested) as blocker:
         dock.page_slider.setValue(4)
     assert blocker.args == [4]
+
+
+def test_word_and_char_counter_updates_live_with_transcript(
+    dock: ComparisonDock,
+) -> None:
+    assert "0 từ" in dock.word_count_label.text()
+
+    dock.set_image(_image(400, 400), text="Xin chào Việt Nam")
+    assert "4 từ" in dock.word_count_label.text()
+    assert "17 ký tự" in dock.word_count_label.text()
+
+
+def test_spell_correction_is_undoable_with_ctrl_z(dock: ComparisonDock) -> None:
+    dock.set_image(_image(400, 400), text="tổ chửc nhan vien")
+    dock.apply_spell_correction()
+
+    assert dock.transcript() == "tổ chức nhân viên"
+
+    dock.editor.undo()
+    assert dock.transcript() == "tổ chửc nhan vien"
+
+
+def test_copy_transcript_copies_text_to_clipboard(
+    dock: ComparisonDock, qtbot, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from PySide6.QtWidgets import QApplication
+
+    copied: list[str] = []
+    clipboard = QApplication.clipboard()
+    monkeypatch.setattr(clipboard, "setText", lambda text: copied.append(text))
+
+    dock.set_image(_image(400, 400), text="Nội dung sao chép nhanh")
+    with qtbot.waitSignal(dock.transcript_copied):
+        dock.copy_transcript_btn.click()
+
+    assert copied == ["Nội dung sao chép nhanh"]
+
+
+def test_highlight_search_query_selects_and_counts_matches(
+    dock: ComparisonDock,
+) -> None:
+    _load(dock)
+
+    count = dock.highlight_search_query("hóa")
+    assert count == 1
+    assert dock.editor.textCursor().selectedText().lower() == "hóa"

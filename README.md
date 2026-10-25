@@ -1,9 +1,6 @@
 # pdf-ocr
 
-Ứng dụng desktop nhận diện chữ (OCR) đa mô hình cho tài liệu tiếng Việt: giữ nguyên bố cục
-nhiều cột, tách bảng biểu, soát lỗi song song ảnh–văn bản, xuất ra PDF tìm kiếm được, Word,
-Excel, Markdown, JSON. Chạy trên **Windows, macOS, Linux** và hoạt động **100% ngoại tuyến**
-sau khi đã tải mô hình.
+Ứng dụng desktop toàn diện cho **Xem PDF chuyên nghiệp**, **Nhận dạng chữ (OCR) đa mô hình** và **Chỉnh sửa & Bảo mật PDF**: giữ nguyên bố cục nhiều cột, tách bảng biểu, soát lỗi song song ảnh–văn bản, xuất ra PDF tìm kiếm được, Word, Excel, Markdown, JSON. Chạy trên **Windows, macOS, Linux** và hoạt động **100% ngoại tuyến** sau khi đã tải mô hình.
 
 - **Hướng dẫn sử dụng:** [docs/user_guide.md](docs/user_guide.md)
 - **Đặc tả kỹ thuật:** [docs/implementation_plan.md](docs/implementation_plan.md)
@@ -20,7 +17,9 @@ sau khi đã tải mô hình.
 | **Nhận diện (7 Engine)** | **VietOCR** (`vgg_transformer`, `vgg_seq2seq`, `resnet_transformer`), **PaddleOCR** (PP-OCRv3/v4/v5/v6, `PP-StructureV3`, `PaddleOCR-VL` 0.9B, tier `mobile`/`server`/`tiny`, 8 ngôn ngữ), **Surya OCR**, **TrOCR** (Small/Base/Large Handwritten, Printed, Scene Text `str`), **EasyOCR** (`latin_g2`, `english_g2`, `latin_g1`, `craft`/`dbnet18`), **Chandra OCR** (`chandra` v1, `chandra-ocr-2` 5B), **dots.ocr** (`dots.ocr` 1.7B, `dots.mocr` 1.5); tự động lùi sang engine dự phòng |
 | **Model tùy chỉnh** | Nhập trực tiếp tệp trọng số riêng (`.pth`, `.pdparams`) hoặc thư mục checkpoint HuggingFace/Paddle từ giao diện |
 | **PDF có sẵn text** | Đọc thẳng lớp text dưới 1 giây/trang; có tùy chọn **Ép buộc OCR** (`force_ocr`) khi lớp chữ gốc bị lỗi bảng mã |
-| **Không gian đọc PDF** | Khung điều hướng trái (**Thông tin tệp**, **Trang** kèm huy hiệu `✓ Đã OCR`, **Mục lục** PDF, **Tìm kiếm** toàn văn), xoay trang 90° (`↺`/`↻`), vừa trang / vừa ngang, cuộn chuyển trang & `Ctrl + Lăn chuột` thu phóng, OCR nhanh riêng trang đang xem |
+| **Xem PDF chuyên nghiệp** | Khung điều hướng trái (**Thông tin tệp & Thanh tiến trình OCR**, **Ảnh thu nhỏ trang (Thumbnails)** kèm menu ngữ cảnh chuột phải, **Mục lục** PDF, **Tìm kiếm** toàn văn tức thì), **3 chế độ màu đọc trang** (**Bình thường**, **Giấy vàng Sepia**, **Ban đêm**), Toàn màn hình (`F11`), hộp thoại **Thuộc tính tài liệu PDF** (`Ctrl+D`: phiên bản PDF, kích thước, bảo mật, siêu dữ liệu & phông chữ nhúng) |
+| **Chỉnh sửa & Bảo mật PDF (`Ctrl+E`)** | **Quản lý trang** (xoay vĩnh viễn lưu vào PDF, xóa trang, trích xuất dải trang, ghép nối nhiều PDF, đảo thứ tự trang), **Chú thích & Bảo mật vùng** (Tô sáng `Highlight`, gắn ghi chú `Sticky Note`, chèn ảnh chữ ký/con dấu, che mật vĩnh viễn `Redaction`), chỉnh sửa **Metadata & Bookmarks**, khóa mật khẩu **AES-256** và nén dung lượng PDF |
+| **Cài đặt 6 danh mục (`Ctrl+,`)** | Cấu hình toàn diện theo phong cách Adobe Reader / ABBYY FineReader (**Chung và Giao diện**, **Xem PDF**, **OCR và Tiền xử lý**, **Từ điển và Chính tả**, **Xuất tệp và PDF**, **Hiệu năng và AI**) kèm **Xuất/Nhập hồ sơ cấu hình (`.json`)** |
 | **Tiền xử lý** | Tự xoay đúng hướng, làm thẳng ảnh nghiêng, cắt viền, khử bóng và tăng tương phản |
 | **Bố cục** | Phân tích chiếu ngang/dọc (XY-Cut Projection Profile) & thứ tự đọc tự nhiên cho tài liệu nhiều cột; tách bảng biểu kèm ô gộp |
 | **Hậu xử lý & Sửa chính tả** | Chuẩn hóa Unicode NFC, sửa nhầm lẫn ký tự, chuẩn hóa dấu thanh, và **Sửa lỗi chính tả & dấu tiếng Việt theo ngữ cảnh N-gram** (`VietnameseSpellCorrector` + `SymSpell` tùy chọn, bảo vệ số/email/SĐT/tên riêng) |
@@ -78,12 +77,12 @@ Chạy riêng từng nhóm: `pytest -m unit`, `pytest -m integration`, `pytest -
 
 | Cổng | Ngưỡng | Hiện tại |
 | :-- | :-- | :-- |
-| Kiểm thử | Tất cả xanh | 600+ |
+| Kiểm thử | Tất cả xanh | 660+ |
 | Độ phủ | ≥ 80% | ~90% |
 | `ruff` / `black` / `isort` | 0 lỗi | 0 |
-| `mypy --strict` | 0 lỗi | 0 (71 tệp) |
+| `mypy --strict` | 0 lỗi | 0 (78 tệp) |
 | `bandit` | 0 cảnh báo | 0 |
-| Kích thước hàm / tệp | ≤ 50 / ≤ 800 dòng | 50 / ≤ 800 |
+| Kích thước hàm / tệp | ≤ 50 / ≤ 800 dòng | ≤ 50 / ≤ 800 |
 
 Bộ tài liệu mẫu nằm ở `tests/fixtures/` và có thể dựng lại bằng
 `python tests/fixtures/generate_fixtures.py`. Kiểm thử end-to-end chạy hoàn toàn ngoại tuyến:
@@ -116,15 +115,16 @@ Dự án đi kèm 2 workflow trong `.github/workflows/`:
 ```
 src/
 ├── main.py            Điểm khởi chạy: HiDPI scaling → logging → ngôn ngữ → theme → weights → cửa sổ
-├── config.py          Preferences bất biến; SQLite là nguồn chính, JSON là bản sao
+├── config.py          Preferences bất biến (6 danh mục + xuất/nhập JSON profile); SQLite là nguồn chính
 ├── constants.py       Từ vựng dùng chung: loại khối, mã màu, ngôn ngữ
-├── core/              Domain thuần: models bất biến, loader, phân loại PDF, tiền xử lý,
-│                      phân tích bố cục (XY-Cut), tách bảng, hậu xử lý & sửa chính tả N-gram
+├── core/              Domain thuần: models bất biến, loader, pdf_editor (chỉnh sửa/bảo mật PDF),
+│                      phân loại PDF, tiền xử lý, phân tích bố cục (XY-Cut), tách bảng, sửa chính tả N-gram
 ├── services/          Điều phối: pipeline, phiên xử lý theo trang, weights, thiết bị, SQLite
 ├── engines/           Provider OCR (VietOCR, PaddleOCR, Surya, TrOCR, EasyOCR, Chandra, dots.ocr)
 ├── exporters/         Provider xuất tệp (Registry + Adapter), ghi nguyên tử
 ├── workers/           QRunnable theo trang, hàng đợi batch, tín hiệu tiến độ
-├── gui/               PySide6: cửa sổ chính, dock điều hướng PDF, canvas, bộ so sánh, hộp thoại, theme, i18n
+├── gui/               PySide6: cửa sổ chính, dock điều hướng PDF (thumbnails & context menu), canvas,
+│                      bộ so sánh, công cụ PDF, thuộc tính tài liệu, cài đặt 6 tab, theme, i18n
 └── utils/             Logging, tiện ích ảnh và đường dẫn
 ```
 
