@@ -5,7 +5,7 @@ from __future__ import annotations
 import pytest
 
 from src.constants import BlockType
-from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRWord
+from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRTable, OCRWord
 from src.core.transcript import apply_transcript, render_transcript
 
 pytestmark = pytest.mark.unit
@@ -170,3 +170,55 @@ def test_a_hyphenated_word_can_be_corrected() -> None:
 
     assert edited.blocks[0].text == "đổi-mới"
     assert edited.blocks[0].lines[0].words[0].bbox == first.words[0].bbox
+
+
+def _table_page() -> OCRPage:
+    cells = (("Mặt hàng", "Số lượng"), ("Bút", "50"))
+    words = tuple(
+        OCRWord(
+            text,
+            BoundingBox(20 + 100 * col, 20 + 40 * row, 90 + 100 * col, 50 + 40 * row),
+        )
+        for row, line in enumerate(cells)
+        for col, text in enumerate(line)
+    )
+    table_block = OCRBlock(
+        lines=(OCRLine(words=words, bbox=BoundingBox(20, 20, 190, 90)),),
+        bbox=BoundingBox(20, 20, 190, 90),
+        block_type=BlockType.TABLE,
+    )
+    note = OCRWord("Ghi", BoundingBox(20, 120, 60, 140))
+    note_block = OCRBlock(
+        lines=(OCRLine(words=(note,), bbox=BoundingBox(20, 120, 60, 140)),),
+        bbox=BoundingBox(20, 120, 60, 140),
+        reading_order=1,
+    )
+    return OCRPage(
+        page_number=1,
+        width=400,
+        height=400,
+        blocks=(table_block, note_block),
+        tables=(OCRTable(rows=cells, bbox=BoundingBox(20, 20, 190, 90)),),
+    )
+
+
+def test_a_table_block_shows_its_rows_and_tab_separated_cells() -> None:
+    assert render_transcript(_table_page()) == ("Mặt hàng\tSố lượng\nBút\t50\n\nGhi")
+
+
+def test_editing_a_table_cell_updates_the_table_and_leaves_the_rest() -> None:
+    page = _table_page()
+
+    edited = apply_transcript(page, "Mặt hàng\tSố lượng\nBút\t55\n\nGhi chú")
+
+    assert edited.tables[0].rows == (("Mặt hàng", "Số lượng"), ("Bút", "55"))
+    assert edited.blocks[0] == page.blocks[0]
+    assert edited.blocks[1].text == "Ghi chú"
+
+
+def test_an_unchanged_table_survives_an_edit_elsewhere() -> None:
+    page = _table_page()
+
+    edited = apply_transcript(page, render_transcript(page) + " thêm")
+
+    assert edited.tables == page.tables

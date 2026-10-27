@@ -2,7 +2,8 @@
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from PySide6.QtCore import QSize, Signal
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import (
     QDialog,
     QDialogButtonBox,
@@ -16,6 +17,10 @@ from PySide6.QtWidgets import (
 
 from src.core.models import OCRTable, TableCellSpan
 from src.gui.i18n import localise_buttons
+
+_MIN_EDITOR_SIZE = QSize(560, 320)
+_MAX_COLUMN_WIDTH = 320
+_SCREEN_SHARE = 0.85
 
 
 def _spans_that_still_fit(
@@ -47,6 +52,7 @@ class TableEditorDialog(QDialog):
         self.table_widget.setAlternatingRowColors(True)
         self._fill_grid(table)
         self._build_layout()
+        self.resize(self._preferred_size())
 
     def _fill_grid(self, table: OCRTable) -> None:
         columns = len(table.rows[0]) if table.rows else 1
@@ -58,6 +64,32 @@ class TableEditorDialog(QDialog):
                     row_index, column_index, QTableWidgetItem(cell)
                 )
         self._fill_blanks()
+        self.table_widget.resizeColumnsToContents()
+        for column in range(self.table_widget.columnCount()):
+            if self.table_widget.columnWidth(column) > _MAX_COLUMN_WIDTH:
+                self.table_widget.setColumnWidth(column, _MAX_COLUMN_WIDTH)
+
+    def _preferred_size(self) -> QSize:
+        """Show the whole grid when it fits, within most of the screen."""
+        grid = self.table_widget
+        width = (
+            grid.verticalHeader().width()
+            + 4
+            + sum(grid.columnWidth(column) for column in range(grid.columnCount()))
+        )
+        height = (
+            grid.horizontalHeader().height()
+            + 4
+            + sum(grid.rowHeight(row) for row in range(grid.rowCount()))
+        )
+        chrome = self.sizeHint() - grid.sizeHint()
+        wanted = QSize(width + chrome.width(), height + chrome.height())
+        wanted = wanted.expandedTo(_MIN_EDITOR_SIZE)
+        screen = (self.screen() or QGuiApplication.primaryScreen()).availableSize()
+        limit = QSize(
+            int(screen.width() * _SCREEN_SHARE), int(screen.height() * _SCREEN_SHARE)
+        )
+        return wanted.boundedTo(limit)
 
     def _fill_blanks(self) -> None:
         """Qt leaves new cells empty; every cell must carry an editable item."""

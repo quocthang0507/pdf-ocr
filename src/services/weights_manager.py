@@ -14,6 +14,7 @@ from urllib.parse import urlparse
 from urllib.request import urlopen
 
 from src.core.exceptions import WeightsError
+from src.utils.compat import ensure_ca_certificates
 from src.utils.file_utils import (
     contained_directory,
     ensure_writable_directory,
@@ -173,6 +174,7 @@ class ModelWeightsManager:
             ) from error
         os.environ.update(hooks)
         _refresh_loaded_caches(hooks)
+        ensure_ca_certificates()
         logger.info("Đã chuyển hướng cache mô hình sang thư mục weights đã chọn.")
 
     def get_engine_weights_dir(self, engine_id: str) -> Path:

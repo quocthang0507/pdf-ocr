@@ -321,3 +321,39 @@ def test_ctrl_c_on_selected_block_copies_its_text(
 
     assert blocker.args == ["copy_block_text", 0]
     assert qapp.clipboard().text() == "Tiêu đề"
+
+
+def test_a_fitted_page_stays_fitted_when_the_pane_resizes(qtbot) -> None:
+    import numpy as np
+
+    from src.gui.components.document_canvas import DocumentCanvas
+
+    canvas = DocumentCanvas()
+    qtbot.addWidget(canvas)
+    canvas.resize(400, 400)
+    canvas.show()
+    canvas.set_image(np.full((800, 600, 3), 255, dtype=np.uint8))
+    canvas.resize(800, 800)
+    qtbot.wait(20)
+
+    page = canvas.page_size()
+    viewport = canvas.viewport().rect()
+    expected = min(viewport.width() / page.width(), viewport.height() / page.height())
+    assert abs(canvas.zoom_factor() - expected) < 0.01
+
+
+def test_an_exact_zoom_is_kept_and_stops_following_the_pane(qtbot) -> None:
+    import numpy as np
+
+    from src.gui.components.document_canvas import DocumentCanvas
+
+    canvas = DocumentCanvas()
+    qtbot.addWidget(canvas)
+    canvas.show()
+    canvas.set_image(np.full((800, 600, 3), 255, dtype=np.uint8))
+    canvas.set_zoom_factor(1.0)
+    canvas.resize(900, 900)
+    qtbot.wait(20)
+
+    assert canvas.zoom_factor() == 1.0
+    assert canvas.fit_mode() is None

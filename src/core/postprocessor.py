@@ -21,6 +21,48 @@ _MODERN_TONE_PAIRS = {"oa", "oe", "uy"}
 _VALID_TONE_STYLES = ("modern", "traditional", "preserve")
 
 
+_SENTENCE_END = (".", "!", "?", ":", ";", "…")
+_MAX_FRAGMENT_WORDS = 3
+
+
+def _has_vietnamese_marks(word: str) -> bool:
+    """True for letters carrying Vietnamese marks (Ề, Ố); acronyms such as
+    UBND, THPT or ĐHQG have none and must stay in capitals."""
+    return any(
+        unicodedata.combining(char) for char in unicodedata.normalize("NFD", word)
+    )
+
+
+def _lower_shouted_fragments(lines: list[OCRLine]) -> list[OCRLine]:
+    """Lower-case short capitalised fragments in the middle of a sentence.
+
+    Line recognisers often read a short wrapped tail such as "về số" as
+    "VỀ SỐ", which then reads "dẫn đầu VỀ SỐ lượng tuyển dụng".
+    """
+    result = list(lines)
+    for index in range(1, len(result)):
+        line = result[index]
+        words = line.text.split()
+        previous = result[index - 1].text.rstrip()
+        following = result[index + 1].text.lstrip() if index + 1 < len(result) else ""
+        if (
+            not words
+            or len(words) > _MAX_FRAGMENT_WORDS
+            or not all(word.isupper() and _has_vietnamese_marks(word) for word in words)
+            or not previous
+            or previous.endswith(_SENTENCE_END)
+            or not previous.split()[-1].islower()
+            or (following and not following[:1].islower())
+        ):
+            continue
+        result[index] = line.with_updates(
+            words=tuple(
+                word.with_updates(text=word.text.lower()) for word in line.words
+            )
+        )
+    return result
+
+
 class Postprocessor:
     """Apply deterministic text cleanup and contextual N-gram spell correction."""
 
@@ -107,11 +149,13 @@ class Postprocessor:
     ) -> OCRBlock:
         if not isinstance(block, OCRBlock):
             raise TypeError("block phải là đối tượng OCRBlock.")
-        return block.with_updates(
-            lines=tuple(
-                self.process_line(line, spell_check=spell_check) for line in block.lines
-            )
-        )
+        lines = [
+            self.process_line(line, spell_check=spell_check) for line in block.lines
+        ]
+        use_spell = self._spell_check if spell_check is None else spell_check
+        if use_spell:
+            lines = _lower_shouted_fragments(lines)
+        return block.with_updates(lines=tuple(lines))
 
     def process_table(
         self, table: OCRTable, *, spell_check: bool | None = None

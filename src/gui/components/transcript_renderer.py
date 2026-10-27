@@ -7,7 +7,7 @@ from dataclasses import dataclass
 
 from src.constants import BlockType
 from src.core.models import OCRBlock, OCRPage
-from src.core.transcript import BLOCK_SEPARATOR
+from src.core.transcript import BLOCK_SEPARATOR, table_for_block, table_transcript
 
 _LIST_MARKER_REGEX = re.compile(r"^([•\-\*\+–—]|\d+[\.\)]|[a-zA-Z][\.\)])\s+")
 
@@ -38,13 +38,18 @@ def render_page_transcript(
             parts.append(BLOCK_SEPARATOR)
             cursor += len(BLOCK_SEPARATOR)
         start = cursor
-        cursor = _render_block_lines(
-            block,
-            parts,
-            cursor,
-            uncertain,
-            confidence_threshold=confidence_threshold,
-        )
+        table_text = table_transcript(page, index)
+        if table_text is not None:
+            parts.append(table_text)
+            cursor += len(table_text)
+        else:
+            cursor = _render_block_lines(
+                block,
+                parts,
+                cursor,
+                uncertain,
+                confidence_threshold=confidence_threshold,
+            )
         blocks.append(TextSpan(start, cursor))
     return "".join(parts), tuple(blocks), tuple(uncertain)
 
@@ -104,20 +109,7 @@ def summarize_page_structure(
 
 def match_table_for_block(page: OCRPage | None, index: int) -> int | None:
     """Match a table block index to the extracted table drawn inside it."""
-    if page is None or not 0 <= index < len(page.blocks):
-        return None
-    block = page.blocks[index]
-    if block.block_type is not BlockType.TABLE:
-        return None
-    for position, table in enumerate(page.tables):
-        centre_x = (table.bbox.x1 + table.bbox.x2) / 2
-        centre_y = (table.bbox.y1 + table.bbox.y2) / 2
-        if (
-            block.bbox.x1 <= centre_x <= block.bbox.x2
-            and block.bbox.y1 <= centre_y <= block.bbox.y2
-        ):
-            return position
-    return None
+    return None if page is None else table_for_block(page, index)
 
 
 def match_block_for_table(page: OCRPage | None, position: int) -> int | None:

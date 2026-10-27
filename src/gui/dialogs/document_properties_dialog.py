@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (
 )
 
 from src.core.pdf_editor import PDFProperties, inspect_pdf_properties
+from src.gui.components.sizing import fit_to_contents
 from src.gui.i18n import localise_buttons
 from src.utils.logger import logger
 
@@ -52,6 +53,7 @@ class DocumentPropertiesDialog(QDialog):
         self.page_count_value = QLabel(str(self._props.page_count), self)
         self.fonts_list = QListWidget(self)
         self._build_layout()
+        fit_to_contents(self)
 
     @staticmethod
     def _inspect_safe(path: Path) -> PDFProperties:

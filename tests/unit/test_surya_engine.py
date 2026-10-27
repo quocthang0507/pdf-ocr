@@ -7,6 +7,7 @@ from types import SimpleNamespace
 import numpy as np
 import pytest
 
+from src.core.exceptions import OCREngineError
 from src.engines.surya_engine import SuryaOCREngine
 from src.services.weights_manager import ModelWeightsManager
 
@@ -63,6 +64,7 @@ def test_surya_supports_current_manager_api_and_releases_server(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     calls: dict[str, object] = {}
+    monkeypatch.setenv("LLAMA_CPP_BINARY", "/opt/llama.cpp/llama-server")
 
     class FakeManager:
         def stop(self) -> None:
@@ -117,3 +119,27 @@ def test_surya_supports_current_manager_api_and_releases_server(
 def test_surya_validates_language_list(langs: object) -> None:
     with pytest.raises(Exception, match="langs"):
         SuryaOCREngine(config={"langs": langs})
+
+
+def test_surya_explains_a_missing_inference_server_at_load(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    """Recent Surya runs through llama.cpp/vLLM; say so instead of failing later."""
+    from src.engines import surya_engine
+
+    class CurrentRecognitionPredictor:
+        def __init__(self, manager: object | None = None) -> None:
+            pass
+
+    monkeypatch.delenv("LLAMA_CPP_BINARY", raising=False)
+    monkeypatch.setattr(surya_engine.shutil, "which", lambda _name: None)
+    monkeypatch.setattr(surya_engine.importlib.util, "find_spec", lambda _name: None)
+    monkeypatch.setattr(
+        surya_engine,
+        "import_module",
+        lambda name: SimpleNamespace(RecognitionPredictor=CurrentRecognitionPredictor),
+    )
+    engine = SuryaOCREngine(weights_manager=ModelWeightsManager(tmp_path))
+
+    with pytest.raises(OCREngineError, match="llama.cpp"):
+        engine.load_model()

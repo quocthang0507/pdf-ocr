@@ -33,7 +33,8 @@ STRUCTURE_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "detect_tables",
         "Nhận diện bảng biểu",
         "Tách bảng thành lưới hàng/cột để chỉnh sửa và xuất Excel/Word. "
-        "Chỉ các mô hình hỗ trợ bảng (như PaddleOCR, Chandra, dots.ocr) mới dùng được.",
+        "PaddleOCR, Chandra, dots.ocr tự nhận diện bảng; với các mô hình khác, "
+        "ứng dụng dò bảng có kẻ khung (kể cả ô gộp).",
     ),
     (
         "reading_order",
@@ -52,7 +53,6 @@ STRUCTURE_OPTIONS: tuple[tuple[str, str, str], ...] = (
         "theo ngữ cảnh N-gram (1/2/3-gram) sau khi OCR.",
     ),
 )
-TABLE_UNSUPPORTED_TIP = "Mô hình đang chọn không hỗ trợ nhận diện bảng biểu."
 
 
 @dataclass(frozen=True)

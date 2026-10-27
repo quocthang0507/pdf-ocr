@@ -17,6 +17,7 @@ from src.constants import BlockType
 from src.core.models import OCRBlock, OCRDocument, OCRPage, OCRTable
 from src.exporters.base_exporter import BaseExporter
 from src.exporters.exporter_registry import register_exporter
+from src.exporters.page_flow import page_flow
 
 
 @register_exporter("docx", "Microsoft Word", extensions=(".docx",))
@@ -55,10 +56,11 @@ class DOCXExporter(BaseExporter):
             style.font.color.rgb = RGBColor(0, 0, 0)
 
     def _add_page(self, document: DocumentType, page: OCRPage) -> None:
-        for block in sorted(page.blocks, key=lambda item: item.reading_order):
-            self._add_block(document, page, block)
-        for table in page.tables:
-            self._add_table(document, table)
+        for item in page_flow(page):
+            if isinstance(item, OCRTable):
+                self._add_table(document, item)
+            else:
+                self._add_block(document, page, item)
 
     def _add_block(
         self, document: DocumentType, page: OCRPage, block: OCRBlock
@@ -95,10 +97,21 @@ class DOCXExporter(BaseExporter):
 
     @staticmethod
     def _alignment(page: OCRPage, block: OCRBlock) -> WD_ALIGN_PARAGRAPH:
-        center = (block.bbox.x1 + block.bbox.x2) / 2
-        if block.bbox.width < page.width * 0.8 and abs(center - page.width / 2) < 20:
+        """Align like the source, judged against the text area, not the sheet.
+
+        A fixed 20 px tolerance around the sheet centre almost never matched
+        a 300 DPI scan, so centred mottos and titles came out left-aligned.
+        """
+        left = min((item.bbox.x1 for item in page.blocks), default=0.0)
+        right = max((item.bbox.x2 for item in page.blocks), default=page.width)
+        width = max(right - left, 1.0)
+        box = block.bbox
+        if box.width >= width * 0.8:
+            return WD_ALIGN_PARAGRAPH.LEFT
+        indent, outdent = box.x1 - left, right - box.x2
+        if indent > width * 0.05 and abs(indent - outdent) <= width * 0.06:
             return WD_ALIGN_PARAGRAPH.CENTER
-        if block.bbox.x1 > page.width * 0.55:
+        if indent > width * 0.4 and outdent <= width * 0.03:
             return WD_ALIGN_PARAGRAPH.RIGHT
         return WD_ALIGN_PARAGRAPH.LEFT
 

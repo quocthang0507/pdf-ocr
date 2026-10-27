@@ -26,7 +26,7 @@
 | **Hậu xử lý & Sửa chính tả** | Chuẩn hóa Unicode NFC, tùy chọn 3 kiểu dấu thanh (`modern`, `traditional` Nghị định 30, `preserve`), từ điển cá nhân (`sai => đúng` & từ bảo vệ), và **Sửa lỗi chính tả tiếng Việt N-gram** (`VietnameseSpellCorrector` + `SymSpell` tùy chọn) |
 | **Soát lỗi** | So sánh ảnh–văn bản đồng bộ hai chiều, tô vàng từ tin cậy thấp theo ngưỡng động, nút điều hướng nhanh **◀ Từ nghi ngờ / Từ nghi ngờ ▶**, nút **Sửa chính tả** 1 chạm, Undo/Redo, Tìm & Thay thế |
 | **Chọn vùng** | Vẽ hình chữ nhật (`Ctrl+R`) kèm menu chuột phải (OCR vùng chọn, Sao chép ảnh vùng chọn, Tô sáng PDF, Che mật PDF) |
-| **Bảng biểu** | Trình sửa bảng dạng lưới trước khi xuất Excel |
+| **Bảng biểu** | Dò bảng có kẻ khung (kể cả ô gộp) cho mọi engine và lấy bảng trực tiếp từ PDF có lớp chữ; trình sửa bảng dạng lưới trước khi xuất Excel/Word |
 | **Xử lý nền & Hàng loạt** | QThreadPool; tạm dừng, tiếp tục, hủy; phần trăm và thời gian còn lại; thu hồi RAM/VRAM sau mỗi trang; **Xuất hàng loạt (`Xuất tất cả…`)** 1 chạm |
 
 | **Xuất** | PDF tìm kiếm được, DOCX, XLSX, Markdown, TXT, JSON — ghi nguyên tử |

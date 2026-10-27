@@ -792,3 +792,16 @@ QWidget#settings_scroll_content {
     background-color: transparent;
     border: none;
 }
+
+/* Status-bar buttons share the bar's height; the default button padding
+   made them taller than the bar, so their borders were cut off. */
+QWidget#batch_controls_container QPushButton {
+    min-height: 18px;
+    padding: 2px 12px;
+}
+
+/* Two buttons share the narrow document card. */
+QPushButton#pdf_tools_quick_button,
+QPushButton#doc_props_quick_button {
+    padding: 6px 8px;
+}

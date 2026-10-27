@@ -12,7 +12,6 @@ from PySide6.QtGui import QColor, QKeySequence, QShortcut, QTextCharFormat, QTex
 from PySide6.QtWidgets import (
     QApplication,
     QFrame,
-    QHBoxLayout,
     QLabel,
     QScrollBar,
     QSpinBox,
@@ -46,6 +45,10 @@ from src.gui.dialogs.find_replace import FindReplaceDialog
 from src.gui.dialogs.table_editor import TableEditorDialog
 
 _MIN_PAGE_PANE_WIDTH = 240
+_MIN_TEXT_PANE_WIDTH = 300
+_MIN_TAB_STOP = 80
+_MAX_TAB_STOP = 360
+_TAB_GAP = 24
 _EVEN_SPLIT = 600
 _REGION_RESULT_MAX_HEIGHT = 140
 _SEARCH_HIGHLIGHT_COLOR = "#93c5fd"
@@ -146,6 +149,8 @@ class ComparisonDock(QWidget):
         self.page_slider.setToolTip("Cuộn để chuyển trang")
         self.page_slider.setRange(0, 0)
         self.page_slider.setEnabled(False)
+        # The slider stretches to any width; it must not set the pane's minimum.
+        self.page_slider.setMinimumWidth(48)
         self.page_label = QLabel("/ 0", self)
         self.page_label.setObjectName("page_indicator")
         self.page_label.setAlignment(Qt.AlignmentFlag.AlignCenter)
@@ -218,17 +223,9 @@ class ComparisonDock(QWidget):
         canvas_layout.addWidget(self.canvas, 1)
         canvas_layout.addWidget(self._build_nav_bar(canvas_pane))
 
-        bar_layout = QHBoxLayout(self.transcript_bar)
-        bar_layout.setContentsMargins(10, 6, 10, 6)
-        bar_layout.setSpacing(6)
-        bar_layout.addWidget(self.transcript_title_label)
-        bar_layout.addWidget(self.word_count_label)
-        bar_layout.addStretch(1)
-        bar_layout.addWidget(self.spell_fix_btn)
-        bar_layout.addWidget(self.find_replace_btn)
-        bar_layout.addWidget(self.copy_transcript_btn)
-
         text_pane = QWidget(self)
+        # Without a floor the splitter squeezed the text into a thin column.
+        text_pane.setMinimumWidth(_MIN_TEXT_PANE_WIDTH)
         text_layout = QVBoxLayout(text_pane)
         text_layout.setContentsMargins(0, 0, 0, 0)
         text_layout.setSpacing(0)
@@ -439,12 +436,29 @@ class ComparisonDock(QWidget):
         self._page = page
         self.canvas.set_image(image)
         self.canvas.set_blocks(page.blocks)
+        self._fit_tab_stops(page)
         with self._suspend_sync():
             self.editor.setPlainText(transcript)
             self._apply_extra_selections()
         self._update_word_count()
         self.region_panel.hide()
         self._refresh_structure()
+
+    def _fit_tab_stops(self, page: OCRPage) -> None:
+        """Space tab stops past the widest table cell so the columns line up."""
+        metrics = self.editor.fontMetrics()
+        widest = max(
+            (
+                metrics.horizontalAdvance(cell.strip())
+                for table in page.tables
+                for row in table.rows
+                for cell in row
+            ),
+            default=0,
+        )
+        self.editor.setTabStopDistance(
+            min(max(_MIN_TAB_STOP, widest + _TAB_GAP), _MAX_TAB_STOP)
+        )
 
     def clear(self) -> None:
         """Drop both panes so the next document starts from an empty state."""

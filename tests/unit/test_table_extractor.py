@@ -104,3 +104,18 @@ def test_rejects_overlapping_or_empty_cell_layouts() -> None:
         extractor.extract(overlapping, ())
     with pytest.raises(ValueError, match="ít nhất một ô"):
         extractor.extract((), ())
+
+
+def test_words_in_a_cell_are_read_line_by_line_left_to_right() -> None:
+    """EasyOCR word boxes on one line differ by a few pixels in height."""
+    cell = DetectedTableCell(0, 0, BoundingBox(0, 0, 400, 120))
+    words = (
+        OCRWord("hàng", BoundingBox(110, 10, 190, 40)),
+        OCRWord("Mặt", BoundingBox(20, 14, 100, 42)),
+        OCRWord("cứng", BoundingBox(110, 62, 190, 90)),
+        OCRWord("bìa", BoundingBox(20, 60, 100, 88)),
+    )
+
+    table = TableExtractor().extract([cell], words)
+
+    assert table.rows == (("Mặt hàng bìa cứng",),)

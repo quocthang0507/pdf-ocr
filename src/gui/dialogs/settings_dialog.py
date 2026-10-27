@@ -29,6 +29,7 @@ from PySide6.QtWidgets import (
 from src.config import ConfigManager, Preferences
 from src.core.exceptions import PDFOCRError
 from src.gui.components.settings_dock import populate_device_combo
+from src.gui.components.sizing import fit_to_contents
 from src.gui.dialogs.settings_tabs import (
     build_dictionary_tab,
     build_export_tab,
@@ -137,6 +138,7 @@ class SettingsDialog(QDialog):
         self._build_layout()
         self._load_preferences(self._preferences)
         self._connect_signals()
+        fit_to_contents(self)
 
     def _init_core_controls(self) -> None:
         self.weights_edit = _line_edit(self, "weights_edit")

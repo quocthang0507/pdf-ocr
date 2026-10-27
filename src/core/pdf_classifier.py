@@ -9,7 +9,14 @@ from typing import Any
 import pymupdf
 
 from src.constants import BlockType, PageType
-from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRWord
+from src.core.models import (
+    BoundingBox,
+    OCRBlock,
+    OCRLine,
+    OCRPage,
+    OCRTable,
+    OCRWord,
+)
 
 
 def classify_page(page: pymupdf.Page) -> PageType:
@@ -150,7 +157,52 @@ def _scaled_box(bbox: Sequence[float], scale: float) -> BoundingBox:
     return BoundingBox(x1=x1, y1=y1, x2=max(x1 + 1.0, x2), y2=max(y1 + 1.0, y2))
 
 
-def extract_text_page(page: pymupdf.Page, page_number: int, dpi: int = 300) -> OCRPage:
+def _cell_text(value: object) -> str:
+    return " ".join(str(value).split()) if value is not None else ""
+
+
+def extract_native_tables(page: pymupdf.Page, scale: float) -> tuple[OCRTable, ...]:
+    """Ruled tables of a digital PDF page, in the page's pixel coordinates.
+
+    Text-layer pages bypass OCR, so their tables used to come out as loose
+    lines. PyMuPDF's default "lines" strategy only reports tables drawn with
+    ruling lines, which keeps ordinary text columns out.
+    """
+    finder = getattr(page, "find_tables", None)
+    if finder is None:
+        return ()
+    try:
+        found = finder()
+    except Exception:  # nosec B110
+        return ()  # an unreadable drawing just means there is no table
+    tables: list[OCRTable] = []
+    for table in getattr(found, "tables", ()):
+        try:
+            rows = table.extract()
+            x1, y1, x2, y2 = table.bbox
+        except Exception:  # nosec B112
+            continue  # skip a table PyMuPDF cannot read
+        width = max((len(row) for row in rows), default=0)
+        if len(rows) < 2 or width < 2:
+            continue
+        cells = tuple(
+            tuple(_cell_text(row[i] if i < len(row) else None) for i in range(width))
+            for row in rows
+        )
+        if not any(cell for row in cells for cell in row):
+            continue
+        tables.append(
+            OCRTable(
+                rows=cells,
+                bbox=BoundingBox(x1 * scale, y1 * scale, x2 * scale, y2 * scale),
+            )
+        )
+    return tuple(tables)
+
+
+def extract_text_page(
+    page: pymupdf.Page, page_number: int, dpi: int = 300, *, with_tables: bool = False
+) -> OCRPage:
     """Extract the native text layer of a PDF page without rasterizing it.
 
     Args:
@@ -164,11 +216,13 @@ def extract_text_page(page: pymupdf.Page, page_number: int, dpi: int = 300) -> O
     scale = dpi / 72.0
     page_type = classify_page(page)
     blocks = () if page_type == PageType.SCANNED else _text_blocks(page, scale)
+    tables = extract_native_tables(page, scale) if with_tables and blocks else ()
     return OCRPage(
         page_number=page_number,
         width=float(page.rect.width * scale),
         height=float(page.rect.height * scale),
         blocks=blocks,
+        tables=tables,
         page_type=page_type,
         dpi=dpi,
     )
@@ -186,7 +240,14 @@ class PDFClassifier:
         return [classify_page(doc[i]) for i in range(len(doc))]
 
     def extract_page(
-        self, page: pymupdf.Page, page_number: int, dpi: int = 300
+        self,
+        page: pymupdf.Page,
+        page_number: int,
+        dpi: int = 300,
+        *,
+        with_tables: bool = False,
     ) -> OCRPage:
-        """Extract native text page directly."""
-        return extract_text_page(page, page_number=page_number, dpi=dpi)
+        """Extract native text page directly, optionally with its ruled tables."""
+        return extract_text_page(
+            page, page_number=page_number, dpi=dpi, with_tables=with_tables
+        )

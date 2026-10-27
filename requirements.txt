@@ -3,8 +3,11 @@
 PySide6>=6.6
 PyMuPDF>=1.24
 vietocr>=0.3.12
+# vietocr pins gdown 4.4, which imports pkg_resources (removed in setuptools 81).
+setuptools<81
 paddleocr>=2.7
-surya-ocr>=0.5
+# Recent surya-ocr (e.g. 0.22) needs an external llama.cpp/vLLM server; 0.10 runs on PyTorch.
+surya-ocr>=0.5,<0.11
 transformers>=4.40
 easyocr>=1.7
 numpy>=2.1

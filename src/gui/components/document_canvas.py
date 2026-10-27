@@ -18,6 +18,7 @@ from PySide6.QtGui import (
     QPainter,
     QPen,
     QPixmap,
+    QResizeEvent,
     QTransform,
     QWheelEvent,
 )
@@ -179,6 +180,8 @@ class DocumentCanvas(QGraphicsView):
         self._region_mode = False
         self._blocks_visible = True
         self._zoom = 1.0
+        # "page" or "width" while the view should keep fitting the viewport.
+        self._fit_mode: str | None = "page"
         self._last_page_step_time = 0.0
         self.scene().selectionChanged.connect(self._publish_selection)
 
@@ -501,13 +504,33 @@ class DocumentCanvas(QGraphicsView):
         return self._zoom
 
     def zoom_in(self) -> None:
-        self._apply_zoom(self._zoom * ZOOM_STEP)
+        self.set_zoom_factor(self._zoom * ZOOM_STEP)
 
     def zoom_out(self) -> None:
-        self._apply_zoom(self._zoom / ZOOM_STEP)
+        self.set_zoom_factor(self._zoom / ZOOM_STEP)
+
+    def set_zoom_factor(self, factor: float) -> None:
+        """Zoom to an exact factor; the view stops following the pane size."""
+        self._fit_mode = None
+        self._apply_zoom(factor)
+
+    def fit_mode(self) -> str | None:
+        return self._fit_mode
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802 - Qt override
+        """Keep a fitted page fitted: the first fit often runs before layout."""
+        super().resizeEvent(event)
+        if self._fit_mode == "width":
+            self._fit_width()
+        elif self._fit_mode == "page":
+            self._fit_page()
 
     def reset_zoom(self) -> None:
         """Fit the whole page in the viewport, the most useful default view."""
+        self._fit_mode = "page"
+        self._fit_page()
+
+    def _fit_page(self) -> None:
         if self._page_item is None:
             self._apply_zoom(1.0)
             return
@@ -526,6 +549,10 @@ class DocumentCanvas(QGraphicsView):
 
     def fit_width(self) -> None:
         """Fit the page width to the viewport width for comfortable reading."""
+        self._fit_mode = "width"
+        self._fit_width()
+
+    def _fit_width(self) -> None:
         if self._page_item is None:
             self._apply_zoom(1.0)
             return
@@ -575,7 +602,7 @@ class DocumentCanvas(QGraphicsView):
             return
 
         if event.modifiers() & Qt.KeyboardModifier.ControlModifier:
-            self._apply_zoom(self._zoom * (ZOOM_STEP ** (steps / 120)))
+            self.set_zoom_factor(self._zoom * (ZOOM_STEP ** (steps / 120)))
             event.accept()
             return
 

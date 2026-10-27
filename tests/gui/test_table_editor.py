@@ -243,3 +243,12 @@ def test_double_clicking_a_block_on_the_canvas_announces_it(qtbot) -> None:
         canvas.mouseDoubleClickEvent(event)
 
     assert blocker.args == [1]
+
+
+def test_the_editor_opens_wide_enough_to_show_every_column(qtbot) -> None:
+    dialog = TableEditorDialog(_table())
+    qtbot.addWidget(dialog)
+    grid = dialog.table_widget
+    columns = sum(grid.columnWidth(column) for column in range(grid.columnCount()))
+
+    assert dialog.width() >= columns + grid.verticalHeader().width()

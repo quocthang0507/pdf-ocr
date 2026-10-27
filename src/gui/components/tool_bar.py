@@ -5,9 +5,17 @@ from __future__ import annotations
 from collections.abc import Mapping
 
 from PySide6.QtCore import QByteArray, QSize, Qt
-from PySide6.QtGui import QAction, QColor, QIcon, QImage, QPainter, QPixmap
+from PySide6.QtGui import (
+    QAction,
+    QColor,
+    QIcon,
+    QImage,
+    QPainter,
+    QPixmap,
+    QResizeEvent,
+)
 from PySide6.QtSvg import QSvgRenderer
-from PySide6.QtWidgets import QStyle, QToolBar, QWidget
+from PySide6.QtWidgets import QStyle, QToolBar, QToolButton, QWidget
 
 from src.gui.components.menu_bar import SEPARATOR
 
@@ -27,6 +35,26 @@ TOOL_BAR_KEYS: tuple[str, ...] = (
     SEPARATOR,
     "settings",
 )
+
+
+#: Buttons that drop their label first when the bar is too narrow; the
+#: everyday document commands keep theirs longest.
+COLLAPSE_ORDER: tuple[str, ...] = (
+    "zoom_in",
+    "zoom_out",
+    "zoom_reset",
+    "settings",
+    "document_properties",
+    "select_region",
+    "pdf_tools",
+    "open_folder",
+    "export",
+    "open_file",
+    "run_ocr",
+)
+
+#: Room kept for the drag handle and the overflow arrow.
+_RESERVED_WIDTH = 24
 
 
 _STANDARD_ICONS: dict[str, QStyle.StandardPixmap] = {
@@ -165,6 +193,62 @@ class ApplicationToolBar(QToolBar):
             self._apply_icon(action, key)
             self._actions_by_key[key] = action
             self.addAction(action)
+        self._fitting = False
+        for action in self._actions_by_key.values():
+            if not action.toolTip():
+                action.setToolTip(action.text().replace("&", ""))
+
+    def resizeEvent(self, event: QResizeEvent) -> None:  # noqa: N802
+        super().resizeEvent(event)
+        self.fit_labels()
+
+    def fit_labels(self) -> None:
+        """Hide labels, least important first, until every button fits.
+
+        Hidden buttons used to slip into the overflow menu behind a tiny
+        arrow at the window's right edge, which looked like missing controls.
+        """
+        if self._fitting or self.orientation() is not Qt.Orientation.Horizontal:
+            return
+        self._fitting = True
+        try:
+            available = self.width() - _RESERVED_WIDTH
+            for key in COLLAPSE_ORDER:
+                self._set_label_shown(key, shown=True)
+            for key in COLLAPSE_ORDER:
+                if self._content_width() <= available:
+                    break
+                self._set_label_shown(key, shown=False)
+        finally:
+            self._fitting = False
+
+    def label_shown(self, key: str) -> bool:
+        button = self._button(key)
+        return button is not None and (
+            button.toolButtonStyle() is not Qt.ToolButtonStyle.ToolButtonIconOnly
+        )
+
+    def _button(self, key: str) -> QToolButton | None:
+        action = self._actions_by_key.get(key)
+        widget = self.widgetForAction(action) if action is not None else None
+        return widget if isinstance(widget, QToolButton) else None
+
+    def _set_label_shown(self, key: str, *, shown: bool) -> None:
+        button = self._button(key)
+        if button is None:
+            return
+        style = (
+            self.toolButtonStyle() if shown else Qt.ToolButtonStyle.ToolButtonIconOnly
+        )
+        if button.toolButtonStyle() is not style:
+            button.setToolButtonStyle(style)
+
+    def _content_width(self) -> int:
+        layout = self.layout()
+        if layout is None:
+            return 0
+        layout.invalidate()
+        return layout.sizeHint().width()
 
     def _apply_icon(self, action: QAction, key: str) -> None:
         """Prefer the bundled line icon; fall back to the platform style icon."""

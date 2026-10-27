@@ -58,7 +58,7 @@ class BatchStatusBar(QStatusBar):
         controls = QWidget(self)
         controls.setObjectName("batch_controls_container")
         row = QHBoxLayout(controls)
-        row.setContentsMargins(8, 2, 8, 2)
+        row.setContentsMargins(8, 0, 8, 0)
         row.setSpacing(8)
         row.setAlignment(Qt.AlignmentFlag.AlignVCenter)
         row.addWidget(self.count_label)

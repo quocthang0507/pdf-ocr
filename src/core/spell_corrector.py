@@ -182,6 +182,17 @@ def _match_case(source: str, target: str) -> str:
     return target
 
 
+_NATIONAL_MOTTO = {
+    "cộng hòa xã hội chủ nghĩa việt nam",
+    "cộng hoà xã hội chủ nghĩa việt nam",
+}
+
+
+def _is_national_motto(line: str) -> bool:
+    """The national title line of Vietnamese administrative documents."""
+    return " ".join(line.split()).lower() in _NATIONAL_MOTTO
+
+
 class VietnameseSpellCorrector:
     """Contextual 1/2/3-gram and orthographic spell corrector for Vietnamese OCR."""
 
@@ -268,6 +279,10 @@ class VietnameseSpellCorrector:
         return "\n".join(self._fix_line(line) for line in lines)
 
     def _fix_line(self, line: str) -> str:
+        if _is_national_motto(line):
+            # Always set in capitals; some recognisers (Surya) return it
+            # in lower case.
+            return line.upper()
         matches = list(_WORD_TOKEN_RE.finditer(line))
         if not matches:
             return line

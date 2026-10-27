@@ -913,7 +913,7 @@ def test_tables_recognised_in_a_region_are_saved_on_the_current_page(
     assert updated is not None
     assert updated.tables == (table,)
     assert any(block.block_type.value == "table" for block in updated.blocks)
-    assert "Paper | 2" in window.comparison.transcript()
+    assert "Item\tQty\nPaper\t2" in window.comparison.transcript()
 
 
 def test_selecting_search_result_in_navigation_dock_navigates_and_highlights_query(
@@ -989,3 +989,43 @@ def test_window_handles_block_context_actions(
 
     handle_block_context_action(window, "copy_block_image", 0)
     assert any("ảnh vùng khung" in m for m in _messages(window))
+
+
+def test_the_window_fits_a_laptop_screen(window: MainWindow) -> None:
+    """Every control must stay reachable on a 1366 px wide display."""
+    window.show()
+
+    assert window.minimumSizeHint().width() <= 1366
+
+
+def test_tool_bar_buttons_stay_on_screen_in_a_narrow_window(
+    window: MainWindow, qtbot
+) -> None:
+    window.resize(1120, 720)
+    window.show()
+    qtbot.wait(50)
+    bar = window.tool_bar
+    buttons = [
+        bar.widgetForAction(action)
+        for action in bar.actions()
+        if not action.isSeparator()
+    ]
+
+    assert all(
+        button is not None
+        and button.isVisible()
+        and button.geometry().right() <= bar.width()
+        for button in buttons
+    )
+    assert not bar.label_shown("zoom_in")
+    assert bar.label_shown("run_ocr")
+
+
+def test_tool_bar_shows_every_label_when_there_is_room(
+    window: MainWindow, qtbot
+) -> None:
+    window.resize(1920, 1000)
+    window.show()
+    qtbot.wait(50)
+
+    assert all(window.tool_bar.label_shown(key) for key in ("zoom_in", "settings"))

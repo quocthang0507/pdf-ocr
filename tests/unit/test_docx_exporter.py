@@ -132,3 +132,84 @@ def test_sets_letter_page_size_and_document_metadata(tmp_path: Path) -> None:
     assert section.page_width.inches == pytest.approx(8.5, abs=0.01)
     assert section.page_height.inches == pytest.approx(11, abs=0.01)
     assert exported.core_properties.title == "Báo cáo"
+
+
+def _analysed_report_page() -> OCRPage:
+    """A page whose table the layout analyser folded into a TABLE block."""
+    from src.core.layout_analyzer import LayoutAnalyzer
+
+    def box_block(text: str, box: tuple[float, float, float, float]) -> OCRBlock:
+        bbox = BoundingBox(*box)
+        return OCRBlock((OCRLine((OCRWord(text, bbox),), bbox),), bbox)
+
+    table = OCRTable(
+        rows=(("Mặt hàng", "Số lượng"), ("Sổ tay", "12")),
+        bbox=BoundingBox(180, 280, 1020, 420),
+    )
+    blocks = (
+        box_block("Báo cáo doanh thu quý III", (200, 100, 1400, 160)),
+        box_block("Mặt hàng", (200, 300, 500, 340)),
+        box_block("Số lượng", (700, 300, 1000, 340)),
+        box_block("Sổ tay", (200, 360, 500, 400)),
+        box_block("12", (700, 360, 1000, 400)),
+        box_block("Tổng kết: doanh thu tăng.", (200, 600, 1400, 640)),
+    )
+    page = OCRPage(1, 1600, 2000, blocks=blocks, tables=(table,))
+    return LayoutAnalyzer().analyze(page)
+
+
+def test_a_table_is_written_once_where_it_stands_on_the_page(tmp_path: Path) -> None:
+    document = OCRDocument((_analysed_report_page(),), source_path="bao-cao.pdf")
+    output = tmp_path / "bao-cao.docx"
+
+    DOCXExporter().export(document, output)
+
+    body = Document(str(output)).element.body
+    order = [
+        (
+            "TABLE"
+            if child.tag == qn("w:tbl")
+            else "".join(node.text or "" for node in child.iter(qn("w:t")))
+        )
+        for child in body.iterchildren()
+        if child.tag in (qn("w:p"), qn("w:tbl"))
+    ]
+    assert order == ["Báo cáo doanh thu quý III", "TABLE", "Tổng kết: doanh thu tăng."]
+
+
+def test_centred_and_right_aligned_lines_keep_their_alignment(tmp_path: Path) -> None:
+    from docx.enum.text import WD_ALIGN_PARAGRAPH
+
+    def at(text: str, x1: float, x2: float, y: float) -> OCRBlock:
+        box = BoundingBox(x1, y, x2, y + 60)
+        return OCRBlock(
+            (OCRLine((OCRWord(text, box),), box),), box, reading_order=int(y)
+        )
+
+    page = OCRPage(
+        1,
+        2480,
+        3508,
+        blocks=(
+            at("CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM", 690, 1790, 200),
+            at("Hà Nội, ngày 25 tháng 10 năm 2026", 1300, 2240, 320),
+            at(
+                "Đoạn văn bản trải hết chiều rộng vùng chữ của trang giấy.",
+                240,
+                2240,
+                440,
+            ),
+            at("Kính gửi: Phòng Kế toán", 240, 1100, 560),
+        ),
+    )
+    output = tmp_path / "don.docx"
+
+    DOCXExporter().export(OCRDocument((page,), source_path="don.pdf"), output)
+
+    alignments = [p.alignment for p in Document(str(output)).paragraphs if p.text]
+    assert alignments == [
+        WD_ALIGN_PARAGRAPH.CENTER,
+        WD_ALIGN_PARAGRAPH.RIGHT,
+        WD_ALIGN_PARAGRAPH.LEFT,
+        WD_ALIGN_PARAGRAPH.LEFT,
+    ]

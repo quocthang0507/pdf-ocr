@@ -7,7 +7,7 @@ import pytest
 from PySide6.QtGui import QTextCursor
 
 from src.constants import LOW_CONFIDENCE_COLOR, BlockType
-from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRWord
+from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRTable, OCRWord
 from src.gui.components.comparison_dock import ComparisonDock
 
 pytestmark = pytest.mark.gui
@@ -362,3 +362,64 @@ def test_right_click_copy_block_text_copies_live_editor_block_text(
 
     assert qapp.clipboard().text() == "HÓA ĐƠN"
     assert dock.editor.textCursor().selectedText() == "HÓA ĐƠN"
+
+
+def test_the_transcript_bar_lays_out_all_its_controls(qtbot) -> None:
+    dock = ComparisonDock()
+    qtbot.addWidget(dock)
+    bar_layout = dock.transcript_bar.layout()
+    controls = (
+        dock.transcript_title_label,
+        dock.word_count_label,
+        dock.spell_fix_btn,
+        dock.find_replace_btn,
+        dock.copy_transcript_btn,
+    )
+
+    assert all(bar_layout.indexOf(control) >= 0 for control in controls)
+
+
+def test_a_table_reads_row_by_row_in_the_transcript(dock: ComparisonDock) -> None:
+    cells = (("Mặt hàng", "Số lượng"), ("Bút", "50"))
+    words = tuple(
+        OCRWord(
+            text,
+            BoundingBox(20 + 100 * col, 20 + 40 * row, 90 + 100 * col, 50 + 40 * row),
+        )
+        for row, line in enumerate(cells)
+        for col, text in enumerate(line)
+    )
+    block = OCRBlock(
+        lines=(_line(words, (20, 20, 190, 90)),),
+        bbox=BoundingBox(20, 20, 190, 90),
+        block_type=BlockType.TABLE,
+    )
+    table = OCRTable(rows=cells, bbox=BoundingBox(20, 20, 190, 90))
+    page = OCRPage(
+        page_number=1, width=400, height=400, blocks=(block,), tables=(table,)
+    )
+
+    dock.set_page(page, _image(400, 400))
+
+    assert dock.transcript() == "Mặt hàng\tSố lượng\nBút\t50"
+
+
+def test_the_toolbars_wrap_instead_of_widening_the_window(
+    dock: ComparisonDock,
+) -> None:
+    dock.show()
+
+    assert dock.minimumSizeHint().width() < 760
+    dock.resize(560, 700)
+    assert dock.zoom_in_btn.isVisible() and dock.copy_transcript_btn.isVisible()
+
+
+def test_table_columns_line_up_past_the_widest_cell(dock: ComparisonDock) -> None:
+    cells = (("Sổ tay bìa cứng dày", "12"), ("Bút", "50"))
+    table = OCRTable(rows=cells, bbox=BoundingBox(20, 20, 190, 90))
+    page = OCRPage(page_number=1, width=400, height=400, tables=(table,))
+
+    dock.set_page(page, _image(400, 400))
+
+    widest = dock.editor.fontMetrics().horizontalAdvance("Sổ tay bìa cứng dày")
+    assert dock.editor.tabStopDistance() > widest

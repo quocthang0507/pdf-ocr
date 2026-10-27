@@ -1,12 +1,15 @@
 """Lazy Surya adapter for multilingual detection and recognition."""
 
+import importlib.util
 import inspect
 import os
+import shutil
 from collections.abc import Iterable, Mapping, Sequence
 from html.parser import HTMLParser
 from importlib import import_module
 from typing import Any, cast
 
+from src.core.exceptions import OCREngineError
 from src.core.models import OCRPage
 from src.engines.base_engine import BaseOCREngine, ConfigField
 from src.engines.easyocr_engine import _languages
@@ -27,6 +30,23 @@ class _TextParser(HTMLParser):
     @property
     def text(self) -> str:
         return " ".join(self.parts)
+
+
+def _require_inference_server() -> None:
+    """Surya 0.2x runs its models through llama.cpp or vLLM, not PyTorch.
+
+    Without either, every page failed later with a bare "cannot recognise"
+    error; explain the fix up front instead.
+    """
+    if os.environ.get("LLAMA_CPP_BINARY") or shutil.which("llama-server"):
+        return
+    if importlib.util.find_spec("vllm") is not None:
+        return
+    raise OCREngineError(
+        "Phiên bản Surya OCR đang cài cần máy chủ suy luận llama.cpp "
+        "(macOS: brew install llama.cpp) hoặc vLLM. Hoặc cài bản chạy trực "
+        'tiếp bằng PyTorch: pip install "surya-ocr<0.11".'
+    )
 
 
 @register_engine(
@@ -74,6 +94,7 @@ class SuryaOCREngine(BaseOCREngine):
         parameters = inspect.signature(recognition.RecognitionPredictor).parameters
         self._uses_current_api = "manager" in parameters
         if self._uses_current_api:
+            _require_inference_server()
             inference = import_module("surya.inference")
             self._inference_manager = inference.SuryaInferenceManager()
             self._recognition_predictor = recognition.RecognitionPredictor(

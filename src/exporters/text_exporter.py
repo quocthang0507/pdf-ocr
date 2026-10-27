@@ -5,18 +5,19 @@ from __future__ import annotations
 from collections.abc import Iterator
 from pathlib import Path
 
-from src.core.models import OCRBlock, OCRDocument, OCRPage, OCRTable
+from src.core.models import OCRDocument, OCRPage, OCRTable
 from src.exporters.base_exporter import BaseExporter
 from src.exporters.exporter_registry import register_exporter
+from src.exporters.page_flow import PageItem, page_flow
 
 
 class _TextDocumentExporter(BaseExporter):
     """Shared traversal helpers for line-oriented text formats."""
 
     @staticmethod
-    def _blocks(document: OCRDocument) -> Iterator[tuple[OCRPage, list[OCRBlock]]]:
+    def _items(document: OCRDocument) -> Iterator[tuple[OCRPage, list[PageItem]]]:
         for page in document.pages:
-            yield page, sorted(page.blocks, key=lambda item: item.reading_order)
+            yield page, page_flow(page)
 
     @staticmethod
     def _table_rows(table: OCRTable) -> list[tuple[str, ...]]:
@@ -31,15 +32,14 @@ class MarkdownExporter(_TextDocumentExporter):
         lines: list[str] = []
         if document.title:
             lines.extend([f"# {document.title}", ""])
-        for page, blocks in self._blocks(document):
+        for page, items in self._items(document):
             lines.extend([f"## Trang {page.page_number}", ""])
-            for block in blocks:
-                if block.text:
-                    lines.extend([self._escape(block.text), ""])
-            for table in page.tables:
-                if table.rows and table.rows[0]:
-                    lines.extend(self._markdown_table(table))
-                    lines.append("")
+            for item in items:
+                if isinstance(item, OCRTable):
+                    if item.rows and item.rows[0]:
+                        lines.extend([*self._markdown_table(item), ""])
+                elif item.text:
+                    lines.extend([self._escape(item.text), ""])
         output_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
     @classmethod
@@ -65,16 +65,14 @@ class PlainTextExporter(_TextDocumentExporter):
         lines: list[str] = []
         if document.title:
             lines.extend([document.title, ""])
-        for page, blocks in self._blocks(document):
+        for page, items in self._items(document):
             lines.extend([f"Trang {page.page_number}", ""])
-            for block in blocks:
-                if block.text:
-                    lines.extend([block.text, ""])
-            for table in page.tables:
-                for row in table.rows:
-                    lines.append("\t".join(row))
-                if table.rows:
-                    lines.append("")
+            for item in items:
+                if isinstance(item, OCRTable):
+                    if item.rows:
+                        lines.extend(["\t".join(row) for row in item.rows] + [""])
+                elif item.text:
+                    lines.extend([item.text, ""])
         output_path.write_text("\n".join(lines).rstrip() + "\n", encoding="utf-8")
 
 

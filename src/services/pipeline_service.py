@@ -8,6 +8,7 @@ from dataclasses import dataclass
 from pathlib import Path
 from types import TracebackType
 
+import cv2
 import numpy as np
 import pymupdf
 
@@ -25,9 +26,12 @@ from src.core.preprocessor import (
     remove_borders,
     rotate_orientation,
 )
+from src.core.table_detector import detect_ruled_tables
+from src.core.table_extractor import TableExtractor
 from src.engines.base_engine import BaseOCREngine
 from src.engines.engine_registry import engine_session, release_accelerator_memory
 from src.services.weights_manager import ModelWeightsManager
+from src.utils.logger import logger
 
 LoaderFactory = Callable[[str | Path], DocumentLoader]
 ImagePreprocessor = Callable[[np.ndarray], np.ndarray]
@@ -54,6 +58,35 @@ def preprocess_for_ocr(
     if enabled("enhance"):
         image = enhance_document_image(image)
     return image
+
+
+def attach_ruled_tables(page: OCRPage, image: np.ndarray) -> OCRPage:
+    """Recover ruled tables for engines that only return text lines.
+
+    VietOCR, EasyOCR and Surya give no table structure, so a ruled table was
+    read as loose lines, column by column. The grid comes from the ruling
+    lines and each cell takes the recognised words whose centre it holds.
+    """
+    try:
+        grids = detect_ruled_tables(image)
+    except (cv2.error, ValueError) as error:
+        logger.debug("Không dò được bảng kẻ khung: {}", error)
+        return page
+    if not grids:
+        return page
+    words = [
+        word for block in page.blocks for line in block.lines for word in line.words
+    ]
+    extractor = TableExtractor()
+    tables = []
+    for cells in grids:
+        try:
+            table = extractor.extract(cells, words)
+        except ValueError:
+            continue
+        if any(cell.strip() for row in table.rows for cell in row):
+            tables.append(table)
+    return page.with_updates(tables=tuple(tables)) if tables else page
 
 
 @dataclass(frozen=True)
@@ -269,10 +302,11 @@ class PipelineService:
         page_type = document.page_types[page_number - 1]
         index = page_number - 1
         if page_type == PageType.TEXT_BASED:
+            chosen = options or PageOptions()
             native = self._classifier.extract_page(
-                document.pdf[index], page_number, dpi
+                document.pdf[index], page_number, dpi, with_tables=chosen.detect_tables
             )
-            return self._analyze_layout(native, options or PageOptions())
+            return self._analyze_layout(native, chosen)
         loaded = document.loader.load_page(page_number, dpi)
         recognized = self._ocr_page(
             loaded, engine_ids, device, config, stack, engines, options
@@ -350,7 +384,9 @@ class PipelineService:
             for index, page_type in enumerate(page_types):
                 page_number = index + 1
                 if page_type == PageType.TEXT_BASED:
-                    native = self._classifier.extract_page(pdf[index], page_number, dpi)
+                    native = self._classifier.extract_page(
+                        pdf[index], page_number, dpi, with_tables=True
+                    )
                     pages.append(self._analyze_layout(native, PageOptions()))
                     continue
                 loaded = loader.load_page(page_number, dpi)
@@ -415,6 +451,8 @@ class PipelineService:
                 page = engine.recognize(image, page_number=loaded.page_number)
                 if not options.detect_tables:
                     page = page.with_updates(tables=())
+                elif not page.tables:
+                    page = attach_ruled_tables(page, image)
                 return self._analyze_layout(page, options)
             except OCREngineError as error:
                 last_error = error

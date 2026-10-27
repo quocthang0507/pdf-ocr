@@ -15,6 +15,8 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from src.gui.components.flow_layout import FlowLayout
+
 _REGION_RESULT_MAX_HEIGHT = 140
 
 
@@ -63,12 +65,11 @@ def build_transcript_bar(parent: QWidget) -> tuple[QFrame, dict[str, Any]]:
         "Sao chép toàn bộ văn bản trang hiện tại",
         bar,
     )
-    layout = QHBoxLayout(bar)
+    # Wraps onto a second row in a narrow pane instead of widening the window.
+    layout = FlowLayout(bar, spacing=6)
     layout.setContentsMargins(10, 6, 10, 6)
-    layout.setSpacing(6)
     layout.addWidget(title)
     layout.addWidget(word_count)
-    layout.addStretch(1)
     layout.addWidget(spell_btn)
     layout.addWidget(find_btn)
     layout.addWidget(copy_btn)
@@ -186,9 +187,8 @@ def build_nav_bar(
     layout = QVBoxLayout(nav_bar)
     layout.setContentsMargins(8, 4, 8, 4)
     layout.setSpacing(4)
-    zoom_row = QHBoxLayout()
-    zoom_row.setContentsMargins(0, 0, 0, 0)
-    zoom_row.setSpacing(6)
+    # Wraps instead of forcing the page pane, and the window, wider.
+    zoom_row = FlowLayout(spacing=6)
     zoom_row.addWidget(group_label("Thu phóng", nav_bar))
     zoom_row.addWidget(ctrls["zoom_out"])
     zoom_row.addWidget(ctrls["zoom_label"])
@@ -198,7 +198,6 @@ def build_nav_bar(
     zoom_row.addWidget(separator(nav_bar))
     zoom_row.addWidget(ctrls["rotate_left"])
     zoom_row.addWidget(ctrls["rotate_right"])
-    zoom_row.addStretch(1)
     page_row = QHBoxLayout()
     page_row.setContentsMargins(0, 0, 0, 0)
     page_row.setSpacing(6)

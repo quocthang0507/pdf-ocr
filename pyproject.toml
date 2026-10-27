@@ -25,7 +25,7 @@ ocr = [
     "torch>=2.1",
     "vietocr>=0.3.12",
     "paddleocr>=2.7",
-    "surya-ocr>=0.5",
+    "surya-ocr>=0.5,<0.11",
     "transformers>=4.40",
     "easyocr>=1.7",
 ]
@@ -95,6 +95,9 @@ module = [
     "paddleocr.*",
     "docx.*",
     "openpyxl.*",
+    # vietocr pins pillow==10.2.0, which ships without type information.
+    "PIL",
+    "PIL.*",
 ]
 ignore_missing_imports = true
 disallow_untyped_calls = false

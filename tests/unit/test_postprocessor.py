@@ -194,3 +194,60 @@ def test_spell_corrector_leaves_abbreviations_and_common_words_lower_case() -> N
 
     for text in ("các loại v.v. và nhiều", "đi từ Hà Nội", "chờ... rồi đi"):
         assert corrector.fix_spelling(text) == text
+
+
+def _line(text: str, top: float) -> OCRLine:
+    box = BoundingBox(10, top, 400, top + 20)
+    return OCRLine(words=(OCRWord(text, box),), bbox=box)
+
+
+@pytest.mark.unit
+def test_a_short_capitalised_fragment_mid_sentence_is_lowered() -> None:
+    """VietOCR reads short wrapped tails such as "về số" as "VỀ SỐ"."""
+    block = OCRBlock(
+        lines=(
+            _line("Ngành chế biến tiếp tục dẫn đầu", 0),
+            _line("VỀ SỐ", 25),
+            _line("lượng tuyển dụng mới.", 50),
+        ),
+        bbox=BoundingBox(10, 0, 400, 70),
+    )
+
+    processed = Postprocessor().process_block(block)
+
+    assert processed.text == (
+        "Ngành chế biến tiếp tục dẫn đầu về số lượng tuyển dụng mới."
+    )
+
+
+@pytest.mark.unit
+def test_acronyms_and_sentence_starts_keep_their_capitals() -> None:
+    block = OCRBlock(
+        lines=(
+            _line("Văn bản gửi tới", 0),
+            _line("UBND", 25),
+            _line("tỉnh và các sở. Kết luận:", 50),
+            _line("ĐỀ NGHỊ", 75),
+            _line("thực hiện ngay.", 100),
+        ),
+        bbox=BoundingBox(10, 0, 400, 120),
+    )
+
+    processed = Postprocessor().process_block(block)
+
+    assert "UBND" in processed.text
+    assert "ĐỀ NGHỊ" in processed.text
+
+
+@pytest.mark.unit
+def test_the_national_title_line_is_set_in_capitals() -> None:
+    """Surya returns the national title of administrative letters in lower case."""
+    from src.core.spell_corrector import VietnameseSpellCorrector
+
+    corrector = VietnameseSpellCorrector()
+
+    assert corrector.fix_spelling("cộng hoà xã hội chủ nghĩa việt nam") == (
+        "CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM"
+    )
+    sentence = "Cộng hòa xã hội chủ nghĩa Việt Nam là tên nước."
+    assert corrector.fix_spelling(sentence) == sentence

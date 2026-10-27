@@ -147,7 +147,7 @@ Cửa sổ chính được thiết kế theo bố cục của các trình đọc
 | **Thiết bị** | CPU hay GPU (`CUDA`) | Để `Tự động phát hiện` |
 | **Độ phân giải** | DPI khi dựng ảnh từ PDF | 300 DPI là mặc định tốt; 400–600 cho chữ rất nhỏ |
 | **Tiền xử lý ảnh** | Tự xoay hướng, làm thẳng nghiêng, cắt viền, tăng tương phản | Giữ bật tất cả, trừ khi ảnh đã sạch sẵn |
-| **Nhận diện bảng biểu** | Dựng lưới hàng/cột từ bảng | Kết hợp tốt nhất với `PaddleOCR` / `Chandra` / `dots.ocr` |
+| **Nhận diện bảng biểu** | Dựng lưới hàng/cột từ bảng (kể cả ô gộp) | Dùng được với mọi mô hình: `PaddleOCR` / `Chandra` / `dots.ocr` tự nhận diện bảng; với VietOCR, EasyOCR, Surya, TrOCR ứng dụng dò **bảng có kẻ khung**; PDF có sẵn lớp chữ lấy bảng trực tiếp từ tệp |
 | **Thứ tự đọc nhiều cột** | Phân tích chiếu XY-Cut & sắp xếp đọc lần lượt từng cột | Giữ bật để tránh ghép chữ xuyên cột |
 | **Gộp dòng thành đoạn** | Nối các dòng cùng đoạn | Tắt nếu cần giữ riêng từng dòng OCR |
 | **Ép buộc OCR** | Bỏ qua lớp chữ có sẵn của PDF, bắt buộc quét ảnh | Bật khi PDF có lớp chữ bị lỗi font/bảng mã |

@@ -7,6 +7,9 @@ so edits are matched word by word across the whole block: every word that
 still lines up keeps its original box. Where the edit no longer lines up,
 the new text is laid out inside the area the old block occupied, so a
 searchable PDF still finds it.
+
+A table block shows as its recognised table instead, one row per line with
+the cells separated by tabs, and an edit there updates the table's cells.
 """
 
 from __future__ import annotations
@@ -14,19 +17,73 @@ from __future__ import annotations
 import re
 from collections.abc import Sequence
 
-from src.core.models import BoundingBox, OCRBlock, OCRLine, OCRPage, OCRWord
+from src.constants import BlockType
+from src.core.models import (
+    BoundingBox,
+    OCRBlock,
+    OCRLine,
+    OCRPage,
+    OCRTable,
+    OCRWord,
+)
 
 BLOCK_SEPARATOR = "\n\n"
 USER_CONFIDENCE = 1.0
-_BLANK_LINES = re.compile(r"\n[ \t]*\n+")
+# Tabs stay out: a table row whose cells are all empty is just tabs.
+_BLANK_LINES = re.compile(r"\n[ ]*\n+")
+CELL_SEPARATOR = "\t"
 
 # (line index, word index) of every word that shows as one token on screen.
 _Group = list[tuple[int, int]]
 
 
+def table_for_block(page: OCRPage, index: int) -> int | None:
+    """Index of the table drawn inside the table block at `index`, if any."""
+    if not 0 <= index < len(page.blocks):
+        return None
+    block = page.blocks[index]
+    if block.block_type is not BlockType.TABLE:
+        return None
+    for position, table in enumerate(page.tables):
+        centre_x = (table.bbox.x1 + table.bbox.x2) / 2
+        centre_y = (table.bbox.y1 + table.bbox.y2) / 2
+        if (
+            block.bbox.x1 <= centre_x <= block.bbox.x2
+            and block.bbox.y1 <= centre_y <= block.bbox.y2
+        ):
+            return position
+    return None
+
+
+def table_transcript(page: OCRPage, index: int) -> str | None:
+    """The block's table, row by row, or None when it shows as a paragraph."""
+    position = _shown_table(page, index)
+    if position is None:
+        return None
+    return "\n".join(
+        CELL_SEPARATOR.join(cell.strip() for cell in row)
+        for row in page.tables[position].rows
+    )
+
+
+def _shown_table(page: OCRPage, index: int) -> int | None:
+    position = table_for_block(page, index)
+    if position is None:
+        return None
+    rows = page.tables[position].rows
+    return position if any(cell.strip() for row in rows for cell in row) else None
+
+
 def render_transcript(page: OCRPage) -> str:
-    """The page as the editor shows it: one paragraph per block."""
-    return BLOCK_SEPARATOR.join(block.text for block in page.blocks)
+    """The page as the editor shows it: one paragraph or table per block."""
+    return BLOCK_SEPARATOR.join(
+        _block_transcript(page, index) for index in range(len(page.blocks))
+    )
+
+
+def _block_transcript(page: OCRPage, index: int) -> str:
+    table = table_transcript(page, index)
+    return page.blocks[index].text if table is None else table
 
 
 def apply_transcript(page: OCRPage, text: str) -> OCRPage:
@@ -35,12 +92,38 @@ def apply_transcript(page: OCRPage, text: str) -> OCRPage:
         return page
     chunks = [chunk for chunk in _BLANK_LINES.split(text) if chunk.strip()]
     if len(chunks) == len(page.blocks):
-        blocks = tuple(
-            _edit_block(block, chunk)
-            for block, chunk in zip(page.blocks, chunks, strict=True)
-        )
-        return page.with_updates(blocks=tuple(block for block in blocks if block))
+        tables = list(page.tables)
+        blocks: list[OCRBlock] = []
+        for index, (block, chunk) in enumerate(zip(page.blocks, chunks, strict=True)):
+            position = _shown_table(page, index)
+            if position is not None:
+                tables[position] = _edit_table(tables[position], chunk)
+                blocks.append(block)
+                continue
+            edited = _edit_block(block, chunk)
+            if edited is not None:
+                blocks.append(edited)
+        return page.with_updates(blocks=tuple(blocks), tables=tuple(tables))
     return page.with_updates(blocks=_relayout(page, chunks))
+
+
+def _edit_table(table: OCRTable, chunk: str) -> OCRTable:
+    """Rows are lines and cells are tab-separated; short rows are padded."""
+    lines = chunk.strip("\n").split("\n")
+    cells = [[cell.strip() for cell in line.split(CELL_SEPARATOR)] for line in lines]
+    width = max(len(row) for row in cells)
+    rows = tuple(tuple(row + [""] * (width - len(row))) for row in cells)
+    if rows == tuple(tuple(cell.strip() for cell in row) for row in table.rows):
+        return table
+    return table.with_updates(
+        rows=rows,
+        merged_cells=tuple(
+            span
+            for span in table.merged_cells
+            if span.row + span.row_span <= len(rows)
+            and span.column + span.column_span <= width
+        ),
+    )
 
 
 def _edit_block(block: OCRBlock, chunk: str) -> OCRBlock | None:

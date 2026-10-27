@@ -41,6 +41,7 @@ from src.core.pdf_editor import (
     update_pdf_bookmarks,
     update_pdf_metadata,
 )
+from src.gui.components.sizing import fit_to_contents
 from src.gui.i18n import localise_buttons
 
 
@@ -112,6 +113,7 @@ class PDFToolsDialog(QDialog):
         self._build_layout()
         self._load_document_state()
         self._connect_signals()
+        fit_to_contents(self)
 
     def _init_page_controls(self) -> None:
         self.pages_range_edit = QLineEdit(str(self._current_page), self)

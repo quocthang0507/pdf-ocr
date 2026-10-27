@@ -35,7 +35,6 @@ from src.gui.components.engine_specs import (
     MODEL_PARAM_KEYS,
     PREPROCESSING_STAGES,
     STRUCTURE_OPTIONS,
-    TABLE_UNSUPPORTED_TIP,
     EngineParameter,
 )
 from src.services.device_service import detect_devices
@@ -125,11 +124,6 @@ class SettingsDock(QWidget):
         self.param_reset_button.setToolTip(
             "Khôi phục tham số của mô hình đang chọn về giá trị mặc định"
         )
-        self._table_engines = {
-            metadata.engine_id
-            for metadata in EngineRegistry.available()
-            if metadata.supports_tables
-        }
         self._populate()
         self._build_layout()
         for combo in self.findChildren(QComboBox):
@@ -391,12 +385,15 @@ class SettingsDock(QWidget):
         return values
 
     def _sync_table_support(self) -> None:
-        """Grey out table recognition when the chosen model cannot do it."""
+        """Table recognition works for every model.
+
+        Models without their own table output fall back to the ruled-table
+        detector, so the option no longer needs to be greyed out.
+        """
         box = self.structure_boxes["detect_tables"]
-        supported = self.engine_combo.currentData() in self._table_engines
-        box.setEnabled(supported)
+        box.setEnabled(True)
         tip = next(tip for key, _l, tip in STRUCTURE_OPTIONS if key == "detect_tables")
-        box.setToolTip(tip if supported else TABLE_UNSUPPORTED_TIP)
+        box.setToolTip(tip)
 
     def _connect_changes(self) -> None:
         self.engine_combo.currentIndexChanged.connect(self._sync_table_support)

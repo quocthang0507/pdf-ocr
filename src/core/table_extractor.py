@@ -53,7 +53,7 @@ class TableExtractor:
         for cell in cells:
             assigned = [word for word in words if self._contains(cell.bbox, word)]
             grid[cell.row][cell.column] = " ".join(
-                word.text for word in sorted(assigned, key=self._word_key)
+                word.text for word in self._reading_order(assigned)
             )
         spans = tuple(
             TableCellSpan(cell.row, cell.column, cell.row_span, cell.column_span)
@@ -93,8 +93,26 @@ class TableExtractor:
         return box.x1 <= center_x < box.x2 and box.y1 <= center_y < box.y2
 
     @staticmethod
-    def _word_key(word: OCRWord) -> tuple[float, float]:
-        return word.bbox.y1, word.bbox.x1
+    def _reading_order(words: Sequence[OCRWord]) -> list[OCRWord]:
+        """Words line by line, left to right.
+
+        Sorting by top edge first let a word a few pixels higher jump ahead
+        of its left neighbour ("hàng Mặt" for "Mặt hàng").
+        """
+        lines: list[list[OCRWord]] = []
+        for word in sorted(words, key=lambda item: item.bbox.y1 + item.bbox.y2):
+            if lines:
+                anchor = lines[-1][0].bbox
+                overlap = min(word.bbox.y2, anchor.y2) - max(word.bbox.y1, anchor.y1)
+                if overlap >= 0.5 * min(word.bbox.height, anchor.height):
+                    lines[-1].append(word)
+                    continue
+            lines.append([word])
+        return [
+            word
+            for line in lines
+            for word in sorted(line, key=lambda item: item.bbox.x1)
+        ]
 
     @staticmethod
     def _enclosing_box(cells: Sequence[DetectedTableCell]) -> BoundingBox:

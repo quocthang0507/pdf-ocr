@@ -17,6 +17,7 @@ from src.engines.result_builder import (
     segment_lines,
 )
 from src.services.weights_manager import ModelWeightsManager
+from src.utils.compat import ensure_pkg_resources
 
 _segment_lines = segment_lines
 
@@ -68,6 +69,7 @@ class VietOCREngine(BaseOCREngine):
         super().__init__(weights_manager, config)
 
     def _load_model(self) -> None:
+        ensure_pkg_resources()
         config_module = import_module("vietocr.tool.config")
         predictor_module = import_module("vietocr.tool.predictor")
         architecture = str(self._config["architecture"])

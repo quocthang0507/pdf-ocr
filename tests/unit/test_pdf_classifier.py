@@ -144,3 +144,39 @@ def test_classifier_service_document(text_pdf: Path, scanned_pdf: Path) -> None:
     types2 = classifier.classify_document(doc2)
     doc2.close()
     assert types2 == [PageType.SCANNED]
+
+
+@pytest.mark.unit
+def test_ruled_tables_of_a_text_pdf_are_extracted_in_pixel_space(
+    tmp_path: Path,
+) -> None:
+    """Text-layer pages skip OCR, so their tables must come from the PDF."""
+    pdf_path = tmp_path / "bang.pdf"
+    doc = pymupdf.open()
+    page = doc.new_page(width=595, height=842)
+    page.insert_text((50, 80), "BAO CAO DOANH THU QUY III", fontsize=14)
+    xs, ys = (50, 250, 400, 545), (120, 150, 180, 210)
+    for y in ys:
+        page.draw_line((xs[0], y), (xs[-1], y))
+    for x in xs:
+        page.draw_line((x, ys[0]), (x, ys[-1]))
+    rows = (("Mat hang", "So luong", "Don gia"), ("So tay", "12", "45000"))
+    for row_index, row in enumerate(rows):
+        for column, text in enumerate(row):
+            page.insert_text((xs[column] + 5, ys[row_index] + 20), text, fontsize=11)
+    doc.save(str(pdf_path))
+    doc.close()
+
+    with pymupdf.open(str(pdf_path)) as reopened:
+        plain = extract_text_page(reopened[0], page_number=1, dpi=144)
+        with_tables = extract_text_page(
+            reopened[0], page_number=1, dpi=144, with_tables=True
+        )
+
+    assert plain.tables == ()
+    (table,) = with_tables.tables
+    assert table.rows[0] == ("Mat hang", "So luong", "Don gia")
+    assert table.rows[1] == ("So tay", "12", "45000")
+    assert table.rows[2] == ("", "", "")
+    assert table.bbox.x1 == pytest.approx(50 * 2, abs=4)
+    assert table.bbox.y2 == pytest.approx(210 * 2, abs=4)
