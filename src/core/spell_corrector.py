@@ -149,6 +149,102 @@ _TRIGRAM_FIXES: dict[tuple[str, str, str], tuple[str, str, str]] = {
 }
 
 
+# Two-word terms of Vietnamese administrative writing. When OCR keeps the
+# letters of one but one word lost or confused its marks ("hiên hành",
+# "Để nghị", "CHU NGHĨA"), the marks are restored. The other word must match
+# exactly, so "để nghĩ", "từ đó" or "cần cù" are never read as a listed term.
+# Terms one word away from another real phrase are left out on purpose:
+# "đăng ký" (đang ký), "cơ quan" (có quan), "sinh ngày" (sinh ngay),
+# "giới tính" (giỏi tính). So are terms with oa/oe/uy, whose tone placement
+# follows the user's tone-style setting.
+_ADMIN_PHRASES: tuple[str, ...] = (
+    "đề nghị",
+    "hiện hành",
+    "chủ nghĩa",
+    "quy định",
+    "giải quyết",
+    "xem xét",
+    "trợ cấp",
+    "nhà nước",
+    "kính gửi",
+    "thông tư",
+    "nghị định",
+    "quyết định",
+    "hành chính",
+    "thủ tục",
+    "công văn",
+    "tờ trình",
+    "kế hoạch",
+    "thực hiện",
+    "triển khai",
+    "phê duyệt",
+    "đơn vị",
+    "cán bộ",
+    "công chức",
+    "viên chức",
+    "hồ sơ",
+    "chứng thực",
+    "xác nhận",
+    "cư trú",
+    "địa chỉ",
+    "điện thoại",
+    "ngân sách",
+    "tài chính",
+    "kế toán",
+    "trách nhiệm",
+    "nhiệm vụ",
+    "hướng dẫn",
+    "tổ chức",
+    "doanh nghiệp",
+    "hợp đồng",
+    "độc lập",
+    "hạnh phúc",
+    "xã hội",
+    "việt nam",
+    "quê quán",
+    "tôn giáo",
+    "nghề nghiệp",
+    "trình độ",
+    "chuyên môn",
+    "thường trú",
+    "tạm trú",
+    "chủ tịch",
+    "phó chủ tịch",
+    "văn phòng",
+    "báo cáo",
+)
+
+
+def _skeleton(text: str) -> str:
+    """Letters without tone or vowel marks: "Đề nghị" -> "de nghi"."""
+    decomposed = unicodedata.normalize("NFD", text.lower().replace("đ", "d"))
+    return "".join(ch for ch in decomposed if not unicodedata.combining(ch))
+
+
+def _phrases_by_skeleton() -> dict[tuple[str, str], tuple[str, str]]:
+    table: dict[tuple[str, str], tuple[str, str]] = {}
+    for phrase in _ADMIN_PHRASES:
+        words = phrase.split()
+        for first, second in zip(words, words[1:], strict=False):
+            key = (_skeleton(first), _skeleton(second))
+            table[key] = (first, second)
+    return table
+
+
+_PHRASE_SKELETONS = _phrases_by_skeleton()
+_KNOWN_PAIRS = frozenset(_PHRASE_SKELETONS.values())
+
+
+def _restore_phrase_marks(pair: tuple[str, str]) -> tuple[str, str] | None:
+    """The listed term these two words spell, when exactly one lost its marks."""
+    if pair in _KNOWN_PAIRS:
+        return None
+    phrase = _PHRASE_SKELETONS.get((_skeleton(pair[0]), _skeleton(pair[1])))
+    if phrase is None or (pair[0] != phrase[0] and pair[1] != phrase[1]):
+        return None
+    return phrase
+
+
 def is_valid_token(token: str) -> bool:
     """Return True if `token` is an ordinary word eligible for spell correction.
 
@@ -388,6 +484,8 @@ class VietnameseSpellCorrector:
                 continue
             key = (words[i].lower(), words[i + 1].lower())
             fixed = _BIGRAM_FIXES.get(key)
+            if fixed is None:
+                fixed = _restore_phrase_marks(key)
             if fixed is not None:
                 words[i] = _match_case(words[i], fixed[0])
                 words[i + 1] = _match_case(words[i + 1], fixed[1])

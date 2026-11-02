@@ -365,3 +365,68 @@ def test_an_ocr_capital_i_misread_for_l_does_not_break_the_paragraph() -> None:
     merged = LayoutAnalyzer().merge_paragraphs(blocks)
 
     assert len(merged) == 1
+
+
+def _text_layer_block(
+    lines: tuple[tuple[str, tuple[float, float, float, float]], ...],
+) -> OCRBlock:
+    """One block holding several lines, as PyMuPDF groups a PDF text layer."""
+    built = tuple(
+        OCRLine(
+            words=tuple(OCRWord(word, BoundingBox(*box)) for word in text.split()),
+            bbox=BoundingBox(*box),
+            font_size=12.0,
+        )
+        for text, box in lines
+    )
+    xs1, ys1, xs2, ys2 = zip(*(box for _, box in lines), strict=True)
+    return OCRBlock(
+        lines=built, bbox=BoundingBox(min(xs1), min(ys1), max(xs2), max(ys2))
+    )
+
+
+@pytest.mark.unit
+def test_paragraphs_inside_one_text_layer_block_are_told_apart() -> None:
+    """PyMuPDF put the national title with its motto, and the salutation with
+    the body, so a digital form came out as two run-together paragraphs."""
+    page = OCRPage(
+        page_number=1,
+        width=2479,
+        height=3508,
+        page_type=PageType.TEXT_BASED,
+        blocks=(
+            _text_layer_block(
+                (
+                    ("CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM", (250, 292, 1280, 350)),
+                    ("Độc lập - Tự do - Hạnh phúc", (250, 346, 948, 404)),
+                )
+            ),
+            _text_layer_block(
+                (
+                    ("Kính gửi: Phòng Kế toán", (250, 454, 849, 512)),
+                    (
+                        "Tôi tên là Nguyễn Văn An, sinh ngày 12 tháng 5 năm 1990.",
+                        (250, 508, 1734, 566),
+                    ),
+                    (
+                        "Đề nghị quý phòng xem xét và giải quyết cho tôi được nhận",
+                        (250, 562, 1752, 620),
+                    ),
+                    (
+                        "khoản trợ cấp theo quy định hiện hành của Nhà nước.",
+                        (250, 616, 1597, 674),
+                    ),
+                )
+            ),
+        ),
+    )
+
+    blocks = LayoutAnalyzer().analyze(page).blocks
+
+    assert [block.text.split(" ")[0] for block in blocks] == [
+        "CỘNG",
+        "Độc",
+        "Kính",
+        "Tôi",
+    ]
+    assert blocks[-1].text.endswith("của Nhà nước.")

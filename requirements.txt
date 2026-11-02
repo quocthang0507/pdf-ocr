@@ -2,6 +2,8 @@
 # Phase 1 only needs `pip install -e .`; OCR providers are optional until phase 3.
 PySide6>=6.6
 PyMuPDF>=1.24
+# Lets searchable-PDF export embed only the glyphs it uses (else ~15 MB/file).
+fonttools>=4.40
 vietocr>=0.3.12
 # vietocr pins gdown 4.4, which imports pkg_resources (removed in setuptools 81).
 setuptools<81

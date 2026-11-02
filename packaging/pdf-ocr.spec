@@ -28,7 +28,16 @@ datas += [(str(path), "src/gui/translations") for path in translations.glob("*.q
 
 # OCR providers are imported lazily by name, so PyInstaller cannot see them.
 hiddenimports: list[str] = []
-for provider in ("vietocr", "paddleocr", "surya", "transformers", "easyocr", "torch"):
+# fontTools is likewise imported by PyMuPDF only when a PDF export subsets fonts.
+for provider in (
+    "vietocr",
+    "paddleocr",
+    "surya",
+    "transformers",
+    "easyocr",
+    "torch",
+    "fontTools",
+):
     try:
         hiddenimports += collect_submodules(provider)
     except Exception:  # noqa: BLE001 - an absent provider must not fail the build

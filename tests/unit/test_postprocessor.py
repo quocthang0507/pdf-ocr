@@ -17,6 +17,7 @@ from src.core.models import (
     OCRWord,
 )
 from src.core.postprocessor import Postprocessor
+from src.core.spell_corrector import VietnameseSpellCorrector
 
 
 def _word(text: str, confidence: float = 1.0) -> OCRWord:
@@ -251,3 +252,31 @@ def test_the_national_title_line_is_set_in_capitals() -> None:
     )
     sentence = "Cộng hòa xã hội chủ nghĩa Việt Nam là tên nước."
     assert corrector.fix_spelling(sentence) == sentence
+
+
+@pytest.mark.parametrize(
+    ("ocr", "expected"),
+    [
+        ("Để nghị quý phòng xem xét", "Đề nghị quý phòng xem xét"),
+        ("theo quy định hiên hành", "theo quy định hiện hành"),
+        ("CỘNG HOÀ XÃ HỘI CHU NGHĨA VIỆT NAM", "CỘNG HOÀ XÃ HỘI CHỦ NGHĨA VIỆT NAM"),
+        ("thực hiên nhiệm vụ", "thực hiện nhiệm vụ"),
+    ],
+)
+def test_administrative_terms_get_their_marks_back(ocr: str, expected: str) -> None:
+    assert VietnameseSpellCorrector().fix_spelling(ocr) == expected
+
+
+@pytest.mark.parametrize(
+    "text",
+    [
+        "Tôi cần thời gian để nghĩ thêm.",
+        "Từ đó đến nay",
+        "anh ấy rất cần cù",
+        "đang ký hợp đồng",
+        "em giỏi tính toán",
+        "Ông Hiên Hành",
+    ],
+)
+def test_real_phrases_that_look_like_a_term_are_left_alone(text: str) -> None:
+    assert VietnameseSpellCorrector().fix_spelling(text) == text

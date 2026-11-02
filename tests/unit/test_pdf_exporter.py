@@ -151,3 +151,64 @@ def test_pdf_exporter_supports_compression_levels(
 def test_pdf_exporter_rejects_unknown_compression_level() -> None:
     with pytest.raises(ValueError, match="nén"):
         PDFExporter(compression_level="ultra")
+
+
+def test_only_the_glyphs_in_use_are_embedded(
+    scanned_source: Path, tmp_path: Path
+) -> None:
+    """A whole Unicode font made every one-page export about 15 MB."""
+    pytest.importorskip("fontTools")
+    destination = tmp_path / "small.pdf"
+
+    PDFExporter(compression_level="balanced").export(
+        _ocr_document(scanned_source), destination
+    )
+
+    assert destination.stat().st_size < 300_000
+    with pymupdf.open(destination) as exported:
+        assert exported[0].search_for("world")
+
+
+def test_a_page_that_is_already_searchable_embeds_no_font(tmp_path: Path) -> None:
+    """An unused font cannot be subset, so it added ~0.5 MB to every page."""
+    source = tmp_path / "digital.pdf"
+    document = pymupdf.open()
+    page = document.new_page(width=200, height=100)
+    page.insert_text((10, 26), "Hello", fontsize=14)
+    page.insert_text((80, 26), "world", fontsize=14)
+    document.save(source)
+    document.close()
+    destination = tmp_path / "digital-out.pdf"
+
+    PDFExporter().export(_ocr_document(source), destination)
+
+    with pymupdf.open(destination) as exported:
+        fonts = {entry[4] for entry in exported[0].get_fonts()}
+    assert "ocrfont" not in fonts
+
+
+def test_hidden_text_keeps_plain_spaces_and_hyphens(
+    scanned_source: Path, tmp_path: Path
+) -> None:
+    """Arial shares one glyph between " " and a no-break space, and between
+    "-" and a soft hyphen; readers then searched and copied the wrong one."""
+    pytest.importorskip("fontTools")
+    box = BoundingBox(10, 10, 190, 40)
+    line = OCRLine(words=(OCRWord("Tự do - Hạnh phúc", box),), bbox=box)
+    page = OCRPage(
+        page_number=1,
+        width=200,
+        height=100,
+        blocks=(OCRBlock(lines=(line,), bbox=box),),
+        page_type=PageType.SCANNED,
+        dpi=72,
+    )
+    destination = tmp_path / "motto.pdf"
+
+    PDFExporter().export(
+        OCRDocument((page,), source_path=str(scanned_source)), destination
+    )
+
+    with pymupdf.open(destination) as exported:
+        assert exported[0].get_text().strip() == "Tự do - Hạnh phúc"
+        assert exported[0].search_for("do - Hạnh")

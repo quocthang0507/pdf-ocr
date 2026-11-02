@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import io
 from pathlib import Path
 
 import pymupdf
@@ -11,10 +12,12 @@ from src.core.exceptions import ExportError
 from src.core.models import BoundingBox, OCRDocument, OCRPage, OCRWord
 from src.exporters.base_exporter import BaseExporter
 from src.exporters.exporter_registry import register_exporter
+from src.utils.logger import logger
 
+# Arial covers Vietnamese; Arial Unicode (~22 MB) is only a last resort.
 _FONT_CANDIDATES = (
-    Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
     Path("/System/Library/Fonts/Supplemental/Arial.ttf"),
+    Path("/System/Library/Fonts/Supplemental/Arial Unicode.ttf"),
     Path("/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"),
     Path("C:/Windows/Fonts/arial.ttf"),
 )
@@ -83,6 +86,7 @@ class PDFExporter(BaseExporter):
     ) -> None:
         if not document.pages:
             raise ExportError("Tài liệu xuất phải có ít nhất một trang.")
+        font = _text_layer_font(document)
         for ocr_page in document.pages:
             source_index = ocr_page.page_number - 1
             if source_index >= source.page_count:
@@ -92,31 +96,42 @@ class PDFExporter(BaseExporter):
                 width=source_page.rect.width, height=source_page.rect.height
             )
             target_page.show_pdf_page(target_page.rect, source, source_index)
-            self._add_text_layer(target_page, ocr_page, _native_text_areas(source_page))
+            self._add_text_layer(
+                target_page, ocr_page, _native_text_areas(source_page), font
+            )
 
     def _add_text_layer(
         self,
         target: pymupdf.Page,
         ocr_page: OCRPage,
         native_areas: tuple[pymupdf.Rect, ...] = (),
+        font_data: bytes | None = None,
     ) -> None:
-        font_name = "ocrfont"
-        font_path = next((path for path in _FONT_CANDIDATES if path.is_file()), None)
-        if font_path is None:
+        scale_x = target.rect.width / ocr_page.width
+        scale_y = target.rect.height / ocr_page.height
+        missing = [
+            word
+            for block in ocr_page.blocks
+            for line in block.lines
+            for word in line.words
+            if not _already_searchable(
+                self._scaled_rect(word.bbox, scale_x, scale_y, target.rect),
+                native_areas,
+            )
+        ]
+        if not missing:
+            # A page that is searchable already needs no font at all; an
+            # unused embedded font cannot be subset and cost ~0.5 MB a page.
+            return
+        if font_data is None:
             font_name = "helv"
             font = pymupdf.Font(fontname=font_name)
         else:
-            target.insert_font(fontname=font_name, fontfile=str(font_path))
-            font = pymupdf.Font(fontfile=str(font_path))
-        scale_x = target.rect.width / ocr_page.width
-        scale_y = target.rect.height / ocr_page.height
-        for block in ocr_page.blocks:
-            for line in block.lines:
-                for word in line.words:
-                    rect = self._scaled_rect(word.bbox, scale_x, scale_y, target.rect)
-                    if _already_searchable(rect, native_areas):
-                        continue
-                    self._insert_word(target, word, scale_x, scale_y, font_name, font)
+            font_name = "ocrfont"
+            target.insert_font(fontname=font_name, fontbuffer=font_data)
+            font = pymupdf.Font(fontbuffer=font_data)
+        for word in missing:
+            self._insert_word(target, word, scale_x, scale_y, font_name, font)
 
     @staticmethod
     def _insert_word(
@@ -154,6 +169,48 @@ class PDFExporter(BaseExporter):
             min(page_rect.x1, bbox.x2 * scale_x),
             min(page_rect.y1, bbox.y2 * scale_y),
         )
+
+
+def _text_layer_font(document: OCRDocument) -> bytes | None:
+    """The font for the hidden text, cut down to the characters it needs.
+
+    Embedding a whole font made a one-page scan about 15 MB. Keeping only the
+    document's own characters also keeps the text correct: Arial draws a
+    space and a no-break space, or "-" and a soft hyphen, with one glyph, and
+    a PDF reader would then copy and search the wrong character.
+    """
+    font_path = next((path for path in _FONT_CANDIDATES if path.is_file()), None)
+    if font_path is None:
+        return None
+    characters = {
+        character
+        for page in document.pages
+        for block in page.blocks
+        for line in block.lines
+        for word in line.words
+        for character in word.text
+    }
+    try:
+        return _subset_font(font_path, characters)
+    except Exception as error:  # fontTools missing or an unusual font file
+        logger.debug("Không rút gọn được phông chữ PDF: {}", error)
+        return font_path.read_bytes()
+
+
+def _subset_font(font_path: Path, characters: set[str]) -> bytes:
+    from fontTools import subset
+    from fontTools.ttLib import TTFont
+
+    options = subset.Options()
+    options.name_IDs = ["*"]
+    options.notdef_outline = True
+    subsetter = subset.Subsetter(options)
+    subsetter.populate(unicodes={ord(character) for character in characters})
+    font = TTFont(str(font_path))
+    subsetter.subset(font)
+    buffer = io.BytesIO()
+    font.save(buffer)
+    return buffer.getvalue()
 
 
 def _native_text_areas(page: pymupdf.Page) -> tuple[pymupdf.Rect, ...]:

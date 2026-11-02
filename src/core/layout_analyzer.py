@@ -168,8 +168,12 @@ class LayoutAnalyzer:
         """Group consecutive lines in reading order into paragraph blocks."""
         if any(not isinstance(block, OCRBlock) for block in blocks):
             raise TypeError("blocks chỉ được chứa đối tượng OCRBlock.")
+        blocks = self.split_into_lines(blocks)
         if len(blocks) < 2:
-            return tuple(blocks)
+            return tuple(
+                block.with_updates(reading_order=order)
+                for order, block in enumerate(blocks)
+            )
 
         blocks = self.join_words_into_lines(blocks)
         if len(blocks) < 2:
@@ -193,6 +197,25 @@ class LayoutAnalyzer:
             block.with_updates(reading_order=order)
             for order, block in enumerate(merged)
         )
+
+    @staticmethod
+    def split_into_lines(blocks: Sequence[OCRBlock]) -> tuple[OCRBlock, ...]:
+        """Give every text line its own block before paragraphs are rebuilt.
+
+        A PDF text layer arrives already grouped by PyMuPDF, which often puts
+        a centred title, its motto and the first body lines in one block.
+        Splitting lets the same paragraph rules that serve scans decide.
+        """
+        split: list[OCRBlock] = []
+        for block in blocks:
+            if block.block_type is not BlockType.TEXT or len(block.lines) < 2:
+                split.append(block)
+                continue
+            split.extend(
+                block.with_updates(lines=(line,), bbox=line.bbox)
+                for line in block.lines
+            )
+        return tuple(split)
 
     def join_words_into_lines(self, blocks: Sequence[OCRBlock]) -> tuple[OCRBlock, ...]:
         """Fold word-level boxes that sit side by side on one row into a line.
